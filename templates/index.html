@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>BuahSafe Capture · AS7265x</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">B</div>
+        <div><strong>BuahSafe</strong><small>Spectral lab</small></div>
+      </div>
+
+      <nav class="navigation" aria-label="Navigasi utama">
+        <a class="nav-item active" href="#capture"><span class="nav-dot"></span>Pengambilan data</a>
+        <a class="nav-item" href="#records"><span class="nav-dot"></span>Riwayat dataset</a>
+      </nav>
+
+      <section class="device-panel" aria-label="Koneksi ESP32">
+        <div class="device-heading">
+          <span>Perangkat</span>
+          <span id="connectionLight" class="connection-light"></span>
+        </div>
+        <strong id="deviceName">ESP32 belum terhubung</strong>
+        <span id="sensorStatus">Pilih port serial</span>
+        <label class="sr-only" for="portSelect">Port serial</label>
+        <select id="portSelect" class="port-select">
+          <option value="">Mencari port...</option>
+        </select>
+        <button id="connectButton" class="connect-button" type="button">Hubungkan ESP32</button>
+      </section>
+    </aside>
+
+    <main>
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Akuisisi spektrum AS7265x (18 kanal)</p>
+          <h1>Capture workspace</h1>
+        </div>
+        <time id="liveClock" class="live-clock"></time>
+      </header>
+
+      <section id="capture" class="capture-grid">
+        <article class="panel control-panel">
+          <label class="field-label" for="fruitId">Sampel aktif</label>
+          <div class="fruit-input-wrap">
+            <input id="fruitId" maxlength="31" autocomplete="off" value="JAMBU_001" aria-describedby="fruitHint">
+            <span>ID BUAH</span>
+          </div>
+
+          <button id="scanButton" class="scan-button" type="button" disabled>
+            <span class="scan-copy"><small>Pengukuran tunggal</small><strong><i>●</i><span id="scanButtonText">Ambil satu scan</span></strong></span>
+            <span class="scan-rings" aria-hidden="true"></span>
+          </button>
+          <p id="fruitHint" class="control-hint">Satu klik memicu penyinaran halogen, buzzer, pembacaan 18 kanal AS7265x, dan 1 baris record database.</p>
+        </article>
+
+        <article class="panel spectrum-panel">
+          <header class="spectrum-header">
+            <div><span class="field-label">Spektrum terbaru</span><h2>18 kanal AS7265x</h2></div>
+            <span class="spectrum-range-badge">410–940 nm</span>
+          </header>
+          <div id="spectrumBars" class="spectrum-bars" aria-label="Grafik 18 kanal AS7265x">
+            {% for wl in [410, 435, 460, 485, 510, 535, 560, 585, 610, 645, 680, 705, 730, 760, 810, 860, 900, 940] %}
+            <div class="bar-column" title="{{ wl }} nm">
+              <span class="bar-value">0.000</span>
+              <div class="bar-track"><div class="spectrum-bar" data-channel="nm{{ wl }}"></div></div>
+              <span class="wavelength">{{ wl }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </article>
+      </section>
+
+      <section class="stats-grid" aria-label="Ringkasan dataset">
+        <article class="panel stat-card"><span>Total rekaman</span><strong id="totalScans">000</strong><em id="totalFruitText">0 jambu tersimpan</em></article>
+        <article class="panel stat-card"><span>Belum dilabeli</span><strong id="unlabeledCount">000</strong><em>Siap ditinjau di tabel</em></article>
+        <article class="panel stat-card"><span>Status terakhir</span><strong id="lastStatus" class="status-copy">Menunggu</strong><em id="lastStatusDetail">Hubungkan ESP32 untuk mulai</em></article>
+      </section>
+
+      <section id="records" class="panel records-panel">
+        <header class="records-header">
+          <div><span class="field-label">Data mentah</span><h2>Riwayat pengukuran (18 kanal)</h2></div>
+          <a class="export-button" href="/export.csv">Unduh CSV <span>↘</span></a>
+        </header>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Waktu</th>
+                <th>ID jambu</th>
+                <th>Scan</th>
+                <th>410</th>
+                <th>435</th>
+                <th>460</th>
+                <th>485</th>
+                <th>510</th>
+                <th>535</th>
+                <th>560</th>
+                <th>585</th>
+                <th>610</th>
+                <th>645</th>
+                <th>680</th>
+                <th>705</th>
+                <th>730</th>
+                <th>760</th>
+                <th>810</th>
+                <th>860</th>
+                <th>900</th>
+                <th>940</th>
+                <th>Label</th>
+              </tr>
+            </thead>
+            <tbody id="measurementRows">
+              <tr><td class="empty-state" colspan="22">Belum ada data pengukuran.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
