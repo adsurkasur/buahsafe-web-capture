@@ -138,6 +138,20 @@ class TestApp(unittest.TestCase):
         self.assertEqual(data_row[3], "1.1")
         self.assertEqual(data_row[20], "18.9")
 
+    def test_debug_api(self):
+        response = self.client.get("/api/debug")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertIn("logs", data)
+        self.assertIn("system", data)
+        self.assertIsInstance(data["logs"], list)
+
+    def test_debug_clear_api(self):
+        response = self.client.post("/api/debug/clear")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["status"], "cleared")
+
 
 if __name__ == "__main__":
     unittest.main()

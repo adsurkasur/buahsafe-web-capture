@@ -19,6 +19,9 @@
       <nav class="navigation" aria-label="Navigasi utama">
         <a class="nav-item active" href="#capture"><span class="nav-dot"></span>Pengambilan data</a>
         <a class="nav-item" href="#records"><span class="nav-dot"></span>Riwayat dataset</a>
+        <button id="openDebugNavBtn" class="nav-item debug-nav-btn" type="button">
+          <span class="nav-dot debug-dot"></span>Debug Console <span id="debugBadge" class="debug-badge">0</span>
+        </button>
       </nav>
 
       <section class="device-panel" aria-label="Koneksi ESP32">
@@ -42,8 +45,50 @@
           <p class="eyebrow">Akuisisi spektrum AS7265x (18 kanal)</p>
           <h1>Capture workspace</h1>
         </div>
-        <time id="liveClock" class="live-clock"></time>
+        <div class="header-actions">
+          <button id="quickDebugBtn" class="debug-toggle-btn" type="button" title="Buka panel log debugging">
+            ⚡ Debug Log
+          </button>
+          <time id="liveClock" class="live-clock"></time>
+        </div>
       </header>
+
+      <!-- Error Inspector Modal (Muncul saat terjadi error agar mudah dibaca & disalin) -->
+      <section id="errorInspector" class="error-inspector hidden" aria-live="assertive">
+        <div class="error-inspector-card">
+          <div class="error-inspector-header">
+            <div class="error-title-wrap">
+              <span class="error-icon" aria-hidden="true">⚠️</span>
+              <div>
+                <strong id="errorInspectorTitle">Scan Gagal</strong>
+                <small id="errorInspectorTime"></small>
+              </div>
+            </div>
+            <button id="closeErrorBtn" class="close-btn" type="button" aria-label="Tutup pesan error">✕</button>
+          </div>
+
+          <div class="error-inspector-body">
+            <p id="errorInspectorMsg" class="error-msg-text"></p>
+
+            <div id="errorRawBoxWrap" class="raw-data-section">
+              <div class="raw-header">
+                <span>Data Mentah Serial (Raw):</span>
+                <span id="rawLengthInfo" class="raw-length-badge"></span>
+              </div>
+              <pre id="errorRawData" class="raw-data-box"></pre>
+            </div>
+          </div>
+
+          <div class="error-inspector-footer">
+            <button id="copyErrorBtn" class="action-btn copy-btn" type="button">
+              📋 Salin Detail Error
+            </button>
+            <button id="viewInConsoleBtn" class="action-btn secondary-btn" type="button">
+              🔍 Buka Debug Console
+            </button>
+          </div>
+        </div>
+      </section>
 
       <section id="capture" class="capture-grid">
         <article class="panel control-panel">
@@ -124,6 +169,42 @@
       </section>
     </main>
   </div>
+
+  <!-- Full Debug Console Modal -->
+  <aside id="debugModal" class="debug-modal hidden" aria-modal="true" role="dialog">
+    <div class="debug-modal-content">
+      <header class="debug-header">
+        <div class="debug-title-wrap">
+          <h2>BuahSafe Debug Console</h2>
+          <span class="debug-status-pill" id="debugStatusPill">Live Log</span>
+        </div>
+        <div class="debug-header-actions">
+          <button id="copyAllLogsBtn" class="console-btn primary" type="button">📋 Salin Semua Log</button>
+          <button id="clearLogsBtn" class="console-btn" type="button">🗑️ Bersihkan</button>
+          <button id="closeDebugModalBtn" class="console-btn close-modal-btn" type="button">✕ Tutup</button>
+        </div>
+      </header>
+
+      <div class="debug-filters">
+        <button class="filter-chip active" data-filter="all">Semua (<span id="countAll">0</span>)</button>
+        <button class="filter-chip" data-filter="ERROR">Error (<span id="countError">0</span>)</button>
+        <button class="filter-chip" data-filter="SERIAL">Serial TX/RX (<span id="countSerial">0</span>)</button>
+        <button class="filter-chip" data-filter="PARSER">Parser (<span id="countParser">0</span>)</button>
+        <button class="filter-chip" data-filter="DEVICE">Device (<span id="countDevice">0</span>)</button>
+      </div>
+
+      <div id="debugLogList" class="debug-log-list" tabindex="0">
+        <div class="log-empty">Memuat log debugging...</div>
+      </div>
+
+      <footer class="debug-footer">
+        <div class="debug-info-text" id="debugSystemInfo">Python · Port --</div>
+        <div class="auto-refresh-wrap">
+          <label><input type="checkbox" id="autoRefreshCheck" checked> Auto-refresh (2s)</label>
+        </div>
+      </footer>
+    </div>
+  </aside>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>
