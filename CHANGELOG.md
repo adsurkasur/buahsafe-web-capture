@@ -6,6 +6,15 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 dan proyek ini mengikuti [Semantic Versioning](https://semver.org/lang/id/)
 (`MAJOR.MINOR.PATCH`).
 
+## [1.0.1] - 2026-08-17
+
+### Fixed
+- Nama proyek/repositori dikoreksi dari `buahsafe-data-collector` menjadi
+  `buahsafe-web-capture` agar konsisten dengan nama produk yang sudah
+  dipakai di dokumen spesifikasi dan dokumentasi lain
+  (`BuahSafe Web Capture`). Perubahan `1.0.0` sebelumnya sempat memakai
+  nama yang tidak konsisten.
+
 ## [1.0.0] - 2026-08-17
 
 Rilis pertama yang diberi tag versi resmi. Menandai titik saat aplikasi
@@ -50,4 +59,5 @@ didokumentasikan secara lengkap.
   pengembangan -- **belum diimplementasikan** pada versi ini (lihat README
   bagian Roadmap).
 
-[1.0.0]: https://github.com/adsurkasur/buahsafe-data-collector/releases/tag/v1.0.0
+[1.0.1]: https://github.com/adsurkasur/buahsafe-web-capture/releases/tag/v1.0.1
+[1.0.0]: https://github.com/adsurkasur/buahsafe-web-capture/releases/tag/v1.0.0

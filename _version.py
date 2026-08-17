@@ -7,4 +7,4 @@ hardcoded -- everything else (README badge, API responses, git tag) should be
 derived from or kept in sync with this value.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"

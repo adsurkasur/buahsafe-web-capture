@@ -1,6 +1,6 @@
-# BuahSafe Data Collector
+# BuahSafe Web Capture
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.1-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Flask](https://img.shields.io/badge/flask-3.1-black)
 
@@ -108,7 +108,7 @@ Catatan pengambilan dataset: jaga pencahayaan, jarak sensor, dan posisi buah tet
 ## Struktur Proyek
 
 ```
-buahsafe-data-collector/
+buahsafe-web-capture/
 ├── app.py                    # Rute Flask (JSON/CSV API) + serving dashboard
 ├── _version.py                # Versi aplikasi (semver) -- satu sumber kebenaran
 ├── database.py                # Skema SQLite, migrasi skema & label
