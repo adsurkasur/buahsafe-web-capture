@@ -32,6 +32,7 @@ class TestApp(unittest.TestCase):
         data = response.get_json()
         self.assertIn("device", data)
         self.assertIn("summary", data)
+        self.assertIn("version", data)
 
     def test_ports_endpoint(self):
         with patch.object(flask_app.device, "available_ports", return_value=[{"device": "COM3", "description": "USB"}]):

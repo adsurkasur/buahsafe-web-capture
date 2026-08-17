@@ -13,6 +13,7 @@ import traceback
 from flask import Flask, Response, jsonify, render_template, request
 
 import database
+from _version import __version__
 from serial_device import (
     CHANNEL_KEYS,
     BuahSafeDevice,
@@ -63,6 +64,7 @@ def favicon():
 @app.get("/api/status")
 def api_status():
     return jsonify({
+        "version": __version__,
         "device": device.status(),
         "summary": database.summary(),
         "last_raw_line": debug_logger.last_raw_line,
@@ -230,6 +232,7 @@ def api_debug_logs():
         "logs": debug_logger.get_logs(limit),
         "last_raw_line": debug_logger.last_raw_line,
         "system": {
+            "version": __version__,
             "python": platform.python_version(),
             "platform": platform.platform(),
             "os": os.name,

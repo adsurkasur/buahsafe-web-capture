@@ -1,8 +1,12 @@
 # BuahSafe Data Collector
 
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![Flask](https://img.shields.io/badge/flask-3.1-black)
+
 Aplikasi web lokal untuk mengumpulkan dataset spektral jambu biji (guava) dari sensor **AS7265x 18-kanal** yang dikendalikan oleh **ESP32**. Setiap klik "Ambil satu scan" menyalakan penyinaran halogen, membaca 18 nilai spektral (410–940 nm), dan menyimpannya sebagai satu baris record di SQLite — siap untuk diberi label dan diekspor sebagai dataset CSV.
 
-> Status: alat akuisisi data untuk membangun dataset. **Belum** merupakan pengklasifikasi kualitas jambu biji produksi — lihat [Keterbatasan yang Diketahui](#keterbatasan-yang-diketahui).
+Versi saat ini (`v1.0.0`) adalah alat akuisisi data satu-operator (single-machine). Beberapa kapabilitas yang lebih luas — login multi-role, manajemen armada perangkat, dashboard analitik — ada di [Roadmap](#roadmap) sebagai arah pengembangan, **belum** diimplementasikan.
 
 ## Daftar Isi
 
@@ -18,7 +22,8 @@ Aplikasi web lokal untuk mengumpulkan dataset spektral jambu biji (guava) dari s
 - [Testing](#testing)
 - [Dokumentasi Lengkap](#dokumentasi-lengkap)
 - [Keterbatasan yang Diketahui](#keterbatasan-yang-diketahui)
-- [Status Proyek](#status-proyek)
+- [Roadmap](#roadmap)
+- [Changelog & Versioning](#changelog--versioning)
 
 ## Fitur
 
@@ -34,19 +39,9 @@ Aplikasi web lokal untuk mengumpulkan dataset spektral jambu biji (guava) dari s
 
 ## Alur Kerja
 
-Urutan operasi mengikuti flowchart aplikasi (`Flowchart 2 BuahSafe.drawio.pdf`):
+<img src="docs/assets/flowchart-scan-workflow.png" alt="Diagram alur kerja pemindaian BuahSafe" width="720">
 
-```
-Buka aplikasi -> pilih port COM -> hubungkan ESP32 -> status CONNECTED
-      -> input ID jambu (divalidasi) -> ID diterima
-            -> [opsional] klik Start Scan -> data 18 kanal tersimpan
-            -> [opsional] lihat riwayat data, filter berdasarkan ID
-            -> [opsional] pilih baris -> beri label (normal/anomali)
-            -> [opsional] export CSV
-      -> disconnect ESP32 -> selesai
-```
-
-Setiap langkah yang butuh prasyarat (port belum dipilih, ID belum diisi, ID mengandung karakter tidak valid, koneksi gagal) menampilkan pesan panduan di antarmuka alih-alih gagal diam-diam.
+Urutan operasi di atas mengikuti diagram alur kerja yang disusun tim (`Flowchart 2 BuahSafe.drawio.pdf`) dan mencerminkan apa yang benar-benar diimplementasikan di versi ini: buka aplikasi → pilih port COM → hubungkan ESP32 → input ID jambu (divalidasi) → scan → simpan → lihat riwayat → beri label → ekspor CSV → disconnect. Setiap langkah yang butuh prasyarat (port belum dipilih, ID belum diisi, ID mengandung karakter tidak valid, koneksi gagal) menampilkan pesan panduan di antarmuka alih-alih gagal diam-diam.
 
 ## Prasyarat
 
@@ -114,15 +109,17 @@ Catatan pengambilan dataset: jaga pencahayaan, jarak sensor, dan posisi buah tet
 
 ```
 buahsafe-data-collector/
-├── app.py                 # Rute Flask (JSON/CSV API) + serving dashboard
-├── database.py             # Skema SQLite, migrasi skema & label
-├── serial_device.py         # Koneksi serial, parsing & validasi data, retry
-├── buahsafe.ino             # Firmware ESP32
-├── launch.py / run_buahsafe.bat   # Entry point aplikasi
-├── templates/index.html      # Markup dashboard
-├── static/app.js, app.css    # Logika & gaya antarmuka
-├── tests/                  # Unit test (parser, database, API)
-└── docs/                   # Panduan operator/maintainer, arsitektur, checklist HAKI
+├── app.py                    # Rute Flask (JSON/CSV API) + serving dashboard
+├── _version.py                # Versi aplikasi (semver) -- satu sumber kebenaran
+├── database.py                # Skema SQLite, migrasi skema & label
+├── serial_device.py            # Koneksi serial, parsing & validasi data, retry
+├── buahsafe.ino                # Firmware ESP32
+├── launch.py / run_buahsafe.bat     # Entry point aplikasi
+├── templates/index.html         # Markup dashboard
+├── static/app.js, app.css       # Logika & gaya antarmuka
+├── tests/                     # Unit test (parser, database, API)
+├── CHANGELOG.md                # Riwayat perubahan per versi (Keep a Changelog)
+└── docs/                      # Panduan operator/maintainer, arsitektur, diagram
 ```
 
 ## Skema Data & Ekspor CSV
@@ -143,7 +140,7 @@ Ekspor CSV (`/export.csv`) menghasilkan seluruh kolom di atas, siap dipakai di E
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Cakupan test: parsing baris `DATA,...` (kasus valid/tidak valid), migrasi skema database (termasuk migrasi label lama → baru), perilaku serial device (handshake, retry, timeout), dan endpoint Flask (connect, scan, label, hapus, filter, ekspor).
+Cakupan test: parsing baris `DATA,...` (kasus valid/tidak valid), migrasi skema database (termasuk migrasi label lama → baru), perilaku serial device (handshake, retry, timeout), dan endpoint Flask (connect, scan, label, hapus, filter, ekspor, version).
 
 Uji fisik (scan sungguhan dengan hardware) terpisah dari automated test dan tidak bisa digantikan mock — lihat prosedur di [`docs/OPERATOR_AND_MAINTAINER_GUIDE.md`](docs/OPERATOR_AND_MAINTAINER_GUIDE.md).
 
@@ -153,17 +150,30 @@ Uji fisik (scan sungguhan dengan hardware) terpisah dari automated test dan tida
 | --- | --- |
 | [`docs/OPERATOR_AND_MAINTAINER_GUIDE.md`](docs/OPERATOR_AND_MAINTAINER_GUIDE.md) | Kontrak serial, skema data, prosedur operasi aman, panduan troubleshooting |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Diagram komponen/alur data & diagram sekuens retry (mermaid) |
-| [`docs/HAKI_RELEASE_CHECKLIST.md`](docs/HAKI_RELEASE_CHECKLIST.md) | Checklist pembekuan versi & bukti untuk pendaftaran HAKI |
+| [`CHANGELOG.md`](CHANGELOG.md) | Riwayat perubahan per versi |
 
 ## Keterbatasan yang Diketahui
 
-- Belum menjadi pengklasifikasi kualitas jambu biji produksi — aplikasi ini merekam bukti (spektrum terkalibrasi + label operator) untuk membangun model tersebut.
+- Versi ini adalah alat akuisisi data, **bukan** pengklasifikasi kualitas jambu biji produksi — merekam bukti (spektrum terkalibrasi + label operator) untuk membangun model tersebut.
 - Korupsi byte tunggal intermiten pada kanal 460 nm (terbuka, termitigasi oleh validasi ketat + retry otomatis; tidak pernah mencapai database).
 - Kesenjangan keandalan laptop vs. desktop pada unit ESP32 tertentu — gunakan desktop sebagai mesin akuisisi utama sampai penyebabnya (diduga USB) dikonfirmasi.
 - Standardisasi pencahayaan/jarak/posisi fisik adalah prosedur operator, bukan sesuatu yang divalidasi oleh perangkat lunak.
 
 Detail lengkap dan tanggal verifikasi ada di bagian "Known limitations and claim boundaries" pada [`docs/OPERATOR_AND_MAINTAINER_GUIDE.md`](docs/OPERATOR_AND_MAINTAINER_GUIDE.md).
 
-## Status Proyek
+## Roadmap
 
-Proyek internal, sedang dalam proses pembekuan versi untuk pendaftaran Hak Kekayaan Intelektual (HAKI) — lihat [`docs/HAKI_RELEASE_CHECKLIST.md`](docs/HAKI_RELEASE_CHECKLIST.md) untuk status terkini. Bukan proyek open-source publik.
+<img src="docs/assets/flowchart-roadmap-role-based.png" alt="Diagram visi arsitektur multi-role BuahSafe" width="720">
+
+Diagram di atas disusun oleh rekan tim sebagai draf arah pengembangan jangka panjang, mencakup:
+
+- **Login & role**: Operator, Supervisor, Owner dengan hak akses berjenjang.
+- **Manajemen armada perangkat**: status online/idle/offline banyak ESP32 sekaligus, firmware & last-active per device.
+- **Dashboard & analitik**: live scan feed, statistik harian, distribusi normal vs. anomali, performa per device.
+- **Master data**: pengelolaan data petani mitra dan pengguna sistem (khusus role Owner).
+
+**Status: belum diimplementasikan.** Versi `v1.0.0` ini masih single-operator, tanpa login/role, tanpa manajemen armada, dan tanpa dashboard analitik. Diagram ini disimpan sebagai referensi arah pengembangan supaya rancangannya tidak hilang, bukan sebagai klaim fitur yang sudah ada.
+
+## Changelog & Versioning
+
+Proyek ini mengikuti [Semantic Versioning](https://semver.org/lang/id/) (`MAJOR.MINOR.PATCH`). Nomor versi didefinisikan satu tempat di [`_version.py`](_version.py) dan disurfacekan lewat `/api/status` & panel Debug Console di aplikasi. Riwayat perubahan per versi ada di [`CHANGELOG.md`](CHANGELOG.md).

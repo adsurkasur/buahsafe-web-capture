@@ -668,7 +668,7 @@ async function fetchDebugLogs() {
     renderDebugLogs();
 
     if (data.system) {
-      elements.debugSystemInfo.textContent = `Python ${data.system.python} · ${data.system.platform} · Port: ${data.system.port || "None"} · Scans: ${data.system.summary?.total_scans || 0}`;
+      elements.debugSystemInfo.textContent = `BuahSafe v${data.system.version || "?"} · Python ${data.system.python} · ${data.system.platform} · Port: ${data.system.port || "None"} · Scans: ${data.system.summary?.total_scans || 0}`;
     }
 
     const errCount = state.debugLogs.filter((l) => l.level === "ERROR").length;
