@@ -147,7 +147,7 @@ def insert_measurement(fruit_id: str, reading: dict[str, Any]) -> dict[str, Any]
     values = [
         timestamp,
         fruit_id,
-        int(reading["scan_no"]),
+        0,  # placeholder -- diganti dengan id (lihat komentar di bawah)
         *(float(reading[key]) for key in CHANNEL_KEYS),
     ]
 
@@ -163,19 +163,90 @@ def insert_measurement(fruit_id: str, reading: dict[str, Any]) -> dict[str, Any]
             """,
             values,
         )
+
+        # "Scan #" yang tersimpan/ditampilkan SENGAJA tidak memakai
+        # reading["scan_no"] mentah dari ESP32 -- counter itu cuma hidup di
+        # RAM firmware dan reset ke 0 tiap board reboot (yang ternyata bisa
+        # terjadi sewaktu-waktu, mis. akibat noise relay), jadi gampang tidak
+        # sinkron / bahkan bentrok dengan scan lama. Sebagai gantinya scan_no
+        # diselaraskan dengan id baris di database (AUTOINCREMENT), yang
+        # dijamin SQLite tidak pernah dipakai ulang -- jadi selalu sinkron
+        # dan gap-free terhadap isi database yang sebenarnya, apa pun yang
+        # terjadi di sisi hardware.
+        connection.execute(
+            "UPDATE measurements SET scan_no = ? WHERE id = ?",
+            (cursor.lastrowid, cursor.lastrowid),
+        )
+
         row = connection.execute(
             "SELECT * FROM measurements WHERE id = ?", (cursor.lastrowid,)
         ).fetchone()
     return dict(row)
 
 
-def list_measurements(limit: int = 250) -> list[dict[str, Any]]:
+def list_measurements(
+    limit: int = 250,
+    offset: int = 0,
+    search: str = "",
+    label: str = "",
+) -> list[dict[str, Any]]:
     safe_limit = min(max(limit, 1), 2000)
+    safe_offset = max(offset, 0)
+
+    clauses: list[str] = []
+    params: list[Any] = []
+    if search:
+        clauses.append("fruit_id LIKE ?")
+        params.append(f"%{search}%")
+    if label:
+        clauses.append("label = ?")
+        params.append(label)
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+
     with database_connection() as connection:
         rows = connection.execute(
-            "SELECT * FROM measurements ORDER BY id DESC LIMIT ?", (safe_limit,)
+            f"SELECT * FROM measurements {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?",
+            (*params, safe_limit, safe_offset),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def count_measurements(search: str = "", label: str = "") -> int:
+    clauses: list[str] = []
+    params: list[Any] = []
+    if search:
+        clauses.append("fruit_id LIKE ?")
+        params.append(f"%{search}%")
+    if label:
+        clauses.append("label = ?")
+        params.append(label)
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+
+    with database_connection() as connection:
+        row = connection.execute(
+            f"SELECT COUNT(*) AS total FROM measurements {where_sql}", params
+        ).fetchone()
+    return row["total"] or 0
+
+
+def delete_measurement(measurement_id: int) -> bool:
+    with database_connection() as connection:
+        cursor = connection.execute(
+            "DELETE FROM measurements WHERE id = ?", (measurement_id,)
+        )
+    return cursor.rowcount > 0
+
+
+def delete_measurements(measurement_ids: list[int]) -> int:
+    if not measurement_ids:
+        return 0
+    placeholders = ", ".join("?" for _ in measurement_ids)
+    with database_connection() as connection:
+        cursor = connection.execute(
+            f"DELETE FROM measurements WHERE id IN ({placeholders})",
+            measurement_ids,
+        )
+    return cursor.rowcount
 
 
 def update_label(measurement_id: int, label: str) -> dict[str, Any] | None:

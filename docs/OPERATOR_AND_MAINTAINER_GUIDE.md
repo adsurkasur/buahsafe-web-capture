@@ -55,7 +55,7 @@ Each row contains:
 - `nm410` through `nm940` for 18 wavelengths;
 - label: empty, `bagus`, or `rusak`.
 
-The application writes only after a successful parsed scan. The dashboard has no delete operation. Local database files under `data/` are ignored by Git and must be backed up separately.
+The application writes only after a successful parsed scan. The dashboard supports deleting individual rows or a selected batch from the records table (single confirmation dialog required); there is still no bulk "wipe all data" shortcut, so accidental mass deletion requires selecting rows explicitly. Local database files under `data/` are ignored by Git and must be backed up separately — export CSV regularly since deletion is permanent (no undo, no soft-delete/trash).
 
 ## Safe operating procedure
 

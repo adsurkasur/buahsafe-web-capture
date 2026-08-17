@@ -32,7 +32,10 @@ Setiap pengukuran berisi timestamp laptop, ID jambu, nomor scan firmware,
 
 Tombol scan nonaktif ketika ESP32 belum terhubung. Timeout, perangkat terlepas,
 data serial salah, dan AS7265x tidak siap ditampilkan tanpa membuat baris database
-palsu. Tidak ada operasi penghapusan dataset dari dashboard.
+palsu. Dashboard mendukung hapus baris (satu atau beberapa sekaligus lewat
+seleksi) dengan dialog konfirmasi wajib; penghapusan bersifat permanen (tidak
+ada undo/trash), jadi operator disarankan ekspor CSV secara berkala sebelum
+membersihkan data uji coba.
 
 ## Pengoperasian
 

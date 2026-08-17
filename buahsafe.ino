@@ -38,8 +38,13 @@ constexpr uint8_t SENSOR_SCL_PIN = 22;
 // Relay configuration
 // -------------------------
 
-constexpr uint8_t RELAY_ON_LEVEL = HIGH;
-constexpr uint8_t RELAY_OFF_LEVEL = LOW;
+// Modul relay generik (VCC->5V, GND->GND, IN->GPIO) pada board ini terbukti
+// ACTIVE-LOW secara fisik: lampu menyala terus saat firmware menulis LOW
+// sebagai "off" dan hanya mati sesaat saat menulis HIGH sebagai "on".
+// Maka polaritas dibalik di sini supaya perilaku logis (ON saat scan,
+// OFF saat idle) sesuai dengan perilaku fisik modul.
+constexpr uint8_t RELAY_ON_LEVEL = LOW;
+constexpr uint8_t RELAY_OFF_LEVEL = HIGH;
 
 // -------------------------
 // LCD
@@ -55,6 +60,7 @@ constexpr uint8_t SENSOR_GAIN = AS7265X_GAIN_64X;
 constexpr uint8_t SENSOR_INTEGRATION_CYCLES = 50;
 
 constexpr uint16_t SCAN_BEEP_MS = 180;
+constexpr uint16_t SCAN_WARMUP_MS = 3000;
 
 // ============================================================
 // Objects
@@ -149,7 +155,25 @@ void performScan() {
     "Jangan digerak"
   );
 
-  // Mengambil measurement baru dari ketiga sensor (AS72651, AS72652, AS72653).
+  // Jeda agar illumination (relay/LED) stabil sebelum sensor membaca,
+  // supaya pembacaan tidak terjadi saat lampu baru menyala (warm-up).
+  delay(SCAN_WARMUP_MS);
+
+  // CATATAN PENTING (lihat juga docs/OPERATOR_AND_MAINTAINER_GUIDE.md):
+  // Triad AS7265x sebenarnya 3 chip fisik terpisah (AS72651/AS72652/AS72653) yang
+  // di-multiplex lewat satu virtual register DEV_SELECT_CONTROL pada chip master.
+  // takeMeasurements() di bawah ini hanya memicu one-shot capture pada SATU device
+  // yang sedang aktif terpilih -- dua device lain akan membawa nilai kalibrasi dari
+  // siklus sebelumnya (bukan nilai yang benar-benar baru di scan ini).
+  //
+  // Sudah dicoba men-trigger ketiga device eksplisit satu-persatu (lewat
+  // getTemperature(device) sebagai pengganti selectDevice() yang private di
+  // library), tapi terbukti membuat board hang/timeout total pada ~40% percobaan
+  // scan (kemungkinan I2C bus AS7265x butuh jeda settle lebih panjang antar
+  // pemilihan device yang belum berhasil ditemukan nilainya). Karena reliabilitas
+  // lebih penting daripada kelengkapan data untuk saat ini, sengaja dikembalikan
+  // ke satu panggilan takeMeasurements() yang sudah terbukti 100% reliable.
+  // TODO: revisit dengan analisa I2C bus (logic analyzer) sebelum mencoba lagi.
   spectralSensor.takeMeasurements();
 
   // Matikan relay setelah proses pengukuran sensor selesai

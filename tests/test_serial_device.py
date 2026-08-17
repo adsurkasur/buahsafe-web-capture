@@ -1,3 +1,4 @@
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -182,6 +183,171 @@ class TestSerialDevice(unittest.TestCase):
         self.assertEqual(result["scan_no"], 42)
         self.assertAlmostEqual(result["nm410"], 1.1)
         self.assertAlmostEqual(result["nm940"], 18.9)
+
+    # --- Hardening: recover valid data instead of hard-failing on timeout ---
+
+    def test_parse_tolerates_leading_noise_byte(self):
+        # UART noise sesekali menyisipkan 1 byte sampah sebelum "DATA,".
+        line = (
+            "\x00DATA,1,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,"
+            "10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0"
+        )
+        parsed = parse_data_line(line)
+        self.assertEqual(parsed["scan_no"], 1)
+        self.assertAlmostEqual(parsed["nm410"], 1.0)
+        self.assertAlmostEqual(parsed["nm940"], 18.0)
+
+    def test_read_complete_line_grace_window_recovers_late_line(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        device._serial = mock_serial
+
+        # Chunk pertama (belum ada newline) baru datang saat deadline nominal
+        # nyaris habis; chunk kedua menyelesaikan baris sesaat sesudahnya.
+        chunk1 = b"DATA,7,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,"
+        chunk2 = b"10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0\r\n"
+        mock_serial.read_until.side_effect = [chunk1, chunk2]
+
+        deadline = time.monotonic() + 0.05
+        result = device._read_complete_line(deadline, grace_seconds=1.0, max_grace_seconds=2.0)
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result.startswith("DATA,7,"))
+        self.assertTrue(result.endswith("18.0"))
+
+    def test_read_complete_line_still_times_out_when_truly_dead(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        device._serial = mock_serial
+        # Tidak pernah ada data sama sekali.
+        mock_serial.read_until.return_value = b""
+
+        deadline = time.monotonic() + 0.05
+        result = device._read_complete_line(deadline, grace_seconds=0.2, max_grace_seconds=0.5)
+        self.assertIsNone(result)
+
+    def test_scan_recovers_valid_data_after_apparent_timeout(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        device._serial = mock_serial
+
+        # Kasus nyata yang dilaporkan: raw_line lengkap & valid (169 char),
+        # tapi _wait_for() sempat melempar timeout karena pola tidak cocok
+        # tepat waktu.
+        valid_line = (
+            "DATA,5,0.829432,1.865169,14.141210,0.000000,2.894009,2.089023,"
+            "2.059999,1.506729,3.467611,2.103488,6.079141,0.417066,0.782507,"
+            "0.845497,0.797302,1.158727,0.611499,0.000000"
+        )
+        timeout_error = DeviceError(
+            "ESP32 tidak merespons sebelum timeout.",
+            raw_line=valid_line,
+        )
+        with patch.object(device, "_wait_for", side_effect=timeout_error):
+            result = device.scan()
+
+        self.assertEqual(result["scan_no"], 5)
+        self.assertAlmostEqual(result["nm410"], 0.829432)
+        self.assertAlmostEqual(result["nm940"], 0.0)
+        # Recovery berarti scan dianggap sukses -- tidak ada error tersimpan.
+        self.assertIsNone(device.last_error)
+        self.assertEqual(device.last_raw_message, valid_line)
+
+    def test_scan_does_not_recover_from_empty_timeout(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        device._serial = mock_serial
+
+        timeout_error = DeviceError("ESP32 tidak merespons sebelum timeout.", raw_line="")
+        with patch.object(device, "_wait_for", side_effect=timeout_error), \
+                patch("serial_device.time.sleep"):
+            with self.assertRaises(DeviceError):
+                device.scan()
+        self.assertIsNotNone(device.last_error)
+
+    def test_scan_does_not_recover_from_garbled_line(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        device._serial = mock_serial
+
+        timeout_error = DeviceError(
+            "ESP32 tidak merespons sebelum timeout.",
+            raw_line="DATA,5,garbage,only,few,fields",
+        )
+        with patch.object(device, "_wait_for", side_effect=timeout_error), \
+                patch("serial_device.time.sleep"):
+            with self.assertRaises(DeviceError):
+                device.scan()
+        self.assertIsNotNone(device.last_error)
+
+    def test_scan_auto_retries_once_on_transient_failure_then_succeeds(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        device._serial = mock_serial
+
+        valid_line = (
+            "DATA,9,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,"
+            "10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0"
+        )
+        # Percobaan pertama gagal total (bukan sesuatu yang bisa dipulihkan
+        # dari raw_line), percobaan kedua (retry otomatis) sukses bersih.
+        with patch.object(
+            device,
+            "_wait_for",
+            side_effect=[
+                DeviceError("ESP32 tidak merespons sebelum timeout.", raw_line=""),
+                valid_line,
+            ],
+        ), patch("serial_device.time.sleep"):
+            result = device.scan()
+
+        self.assertEqual(result["scan_no"], 9)
+        self.assertIsNone(device.last_error)
+
+    def test_scan_does_not_reuse_stale_last_raw_message_on_genuine_timeout(self):
+        # Regresi untuk bug nyata: scan pertama sukses (last_raw_message
+        # terisi). Scan KEDUA gagal total (ESP32 hang sungguhan, 0 byte
+        # masuk -- raw_line kosong). Sebelum fix, kode ini keliru fallback ke
+        # last_raw_message lama dan mengembalikannya sebagai "sukses" --
+        # menghasilkan data duplikat palsu di database. Sekarang harus benar2
+        # melempar error, bukan mendaur ulang data basi.
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        device._serial = mock_serial
+
+        first_line = (
+            "DATA,9,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,"
+            "10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0"
+        )
+        with patch.object(device, "_wait_for", return_value=first_line):
+            first_result = device.scan()
+        self.assertEqual(first_result["scan_no"], 9)
+        self.assertEqual(device.last_raw_message, first_line)
+
+        genuine_timeout = DeviceError("ESP32 tidak merespons sebelum timeout.", raw_line="")
+        with patch.object(device, "_wait_for", side_effect=genuine_timeout), \
+                patch("serial_device.time.sleep"):
+            with self.assertRaises(DeviceError):
+                device.scan()
+
+    def test_scan_gives_up_after_max_attempts(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        device._serial = mock_serial
+
+        timeout_error = DeviceError("ESP32 tidak merespons sebelum timeout.", raw_line="")
+        with patch.object(device, "_wait_for", side_effect=timeout_error), \
+                patch("serial_device.time.sleep") as mock_sleep:
+            with self.assertRaises(DeviceError):
+                device.scan()
+        # 2 percobaan total -> 1 kali sleep di antara percobaan
+        self.assertEqual(mock_sleep.call_count, 1)
 
 
 if __name__ == "__main__":

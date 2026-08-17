@@ -152,6 +152,64 @@ class TestApp(unittest.TestCase):
         data = response.get_json()
         self.assertEqual(data["status"], "cleared")
 
+    def _sample_reading(self, scan_no: int = 1) -> dict:
+        reading = {"scan_no": scan_no}
+        for key in CHANNEL_KEYS:
+            reading[key] = 1.0
+        return reading
+
+    def test_delete_measurement_endpoint(self):
+        inserted = database.insert_measurement("JAMBU_DEL", self._sample_reading())
+
+        response = self.client.delete(f"/api/measurements/{inserted['id']}")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["deleted_id"], inserted["id"])
+        self.assertEqual(data["summary"]["total_scans"], 0)
+
+        # Deleting again -> 404
+        response = self.client.delete(f"/api/measurements/{inserted['id']}")
+        self.assertEqual(response.status_code, 404)
+
+    def test_bulk_delete_measurement_endpoint(self):
+        ids = [
+            database.insert_measurement("JAMBU_BULK", self._sample_reading(i))["id"]
+            for i in range(1, 4)
+        ]
+
+        response = self.client.post(
+            "/api/measurements/bulk-delete", json={"ids": ids[:2]}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["deleted_count"], 2)
+        self.assertEqual(data["summary"]["total_scans"], 1)
+
+        # Empty list -> 400
+        response = self.client.post("/api/measurements/bulk-delete", json={"ids": []})
+        self.assertEqual(response.status_code, 400)
+
+    def test_measurements_search_label_and_pagination(self):
+        a = database.insert_measurement("JAMBU_SEARCH", self._sample_reading(1))
+        database.insert_measurement("OTHER_FRUIT", self._sample_reading(1))
+        database.update_label(a["id"], "bagus")
+
+        response = self.client.get("/api/measurements?q=SEARCH")
+        data = response.get_json()
+        self.assertEqual(len(data["measurements"]), 1)
+        self.assertEqual(data["measurements"][0]["fruit_id"], "JAMBU_SEARCH")
+        self.assertEqual(data["total"], 1)
+
+        response = self.client.get("/api/measurements?label=bagus")
+        data = response.get_json()
+        self.assertEqual(len(data["measurements"]), 1)
+        self.assertEqual(data["measurements"][0]["fruit_id"], "JAMBU_SEARCH")
+
+        response = self.client.get("/api/measurements?limit=1&offset=0")
+        data = response.get_json()
+        self.assertEqual(len(data["measurements"]), 1)
+        self.assertEqual(data["total"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
