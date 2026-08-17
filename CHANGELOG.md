@@ -6,6 +6,11 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 dan proyek ini mengikuti [Semantic Versioning](https://semver.org/lang/id/)
 (`MAJOR.MINOR.PATCH`).
 
+## [1.0.2] - 2026-08-17
+
+### Removed
+- Menghapus tombol `⚡ Debug Log` (`quickDebugBtn`) dari *header* antarmuka utama untuk mengurangi redundansi. Akses ke Debug Console tetap dipertahankan melalui tombol "Buka Debug Console" pada *Error Inspector* saat terjadi kegagalan dan tombol navigasi lainnya.
+
 ## [1.0.1] - 2026-08-17
 
 ### Fixed
@@ -59,5 +64,6 @@ didokumentasikan secara lengkap.
   pengembangan -- **belum diimplementasikan** pada versi ini (lihat README
   bagian Roadmap).
 
+[1.0.2]: https://github.com/adsurkasur/buahsafe-web-capture/releases/tag/v1.0.2
 [1.0.1]: https://github.com/adsurkasur/buahsafe-web-capture/releases/tag/v1.0.1
 [1.0.0]: https://github.com/adsurkasur/buahsafe-web-capture/releases/tag/v1.0.0

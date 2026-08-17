@@ -67,7 +67,6 @@ const elements = {
 
   // Debug Console Elements
   openDebugNavBtn: document.querySelector("#openDebugNavBtn"),
-  quickDebugBtn: document.querySelector("#quickDebugBtn"),
   debugModal: document.querySelector("#debugModal"),
   closeDebugModalBtn: document.querySelector("#closeDebugModalBtn"),
   debugLogList: document.querySelector("#debugLogList"),
@@ -833,7 +832,6 @@ elements.closeErrorBtn.addEventListener("click", hideErrorInspector);
 
 // Debug Modal Actions
 elements.openDebugNavBtn.addEventListener("click", openDebugModal);
-elements.quickDebugBtn.addEventListener("click", openDebugModal);
 elements.closeDebugModalBtn.addEventListener("click", closeDebugModal);
 elements.copyAllLogsBtn.addEventListener("click", copyAllDebugLogs);
 elements.clearLogsBtn.addEventListener("click", clearDebugLogs);
