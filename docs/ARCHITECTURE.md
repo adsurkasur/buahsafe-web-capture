@@ -26,7 +26,7 @@ scan sequence (with automatic retry on transient failure), validates every
 reading before accepting it, and persists successful measurements to a local
 SQLite database. Operators interact entirely through a browser-based
 dashboard served by the same Flask process: connecting to the device,
-triggering scans, labeling fruit as `bagus`/`rusak`, searching/filtering
+triggering scans, labeling fruit as `normal`/`anomali`, searching/filtering
 history, and exporting the dataset as CSV for downstream analysis.
 
 ## Full program description

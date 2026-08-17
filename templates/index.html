@@ -105,7 +105,7 @@
             <span class="scan-copy"><small>Pengukuran tunggal</small><strong><i>●</i><span id="scanButtonText">Ambil satu scan</span></strong></span>
             <span class="scan-rings" aria-hidden="true"></span>
           </button>
-          <p id="fruitHint" class="control-hint">Satu klik memicu penyinaran halogen, buzzer, pembacaan 18 kanal AS7265x, dan 1 baris record database.</p>
+          <p id="fruitHint" class="control-hint">Hubungkan ESP32 terlebih dahulu, lalu masukkan ID jambu untuk mulai memindai.</p>
         </article>
 
         <article class="panel spectrum-panel">
@@ -149,8 +149,8 @@
             <select id="labelFilter" class="filter-select" aria-label="Filter label">
               <option value="__all__">Semua label</option>
               <option value="__empty__">Belum dilabeli</option>
-              <option value="bagus">Bagus</option>
-              <option value="rusak">Rusak</option>
+              <option value="normal">Normal</option>
+              <option value="anomali">Anomali</option>
             </select>
           </div>
           <div id="bulkActionsBar" class="bulk-actions hidden">

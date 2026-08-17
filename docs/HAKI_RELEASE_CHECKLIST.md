@@ -21,7 +21,7 @@ sensitivity: restricted
 - [ ] Clean release commit created.
 - [ ] Release version/tag recorded.
 - [ ] `git status` clean except explicitly excluded local data.
-- [x] Automated tests pass. — 53/53, 2026-08-17. See `TEST_RESULTS_2026-08-17.md`.
+- [x] Automated tests pass. — 54/54, 2026-08-17 (after flowchart-alignment UI changes + label vocabulary rename bagus/rusak -> normal/anomali). See `TEST_RESULTS_2026-08-17.md` addendum.
 - [ ] Source snapshot excludes `.venv`, SQLite data, cache, device logs, and temporary files.
 - [ ] Snapshot and key documents have SHA-256 hashes.
 

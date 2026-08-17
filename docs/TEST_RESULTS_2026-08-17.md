@@ -77,3 +77,31 @@ SAVED-ack wait window) independently of any server-side retry masking it:
 - Physical demonstration evidence (photos/video of the physical scanning
   setup, enclosure, and a real guava sample) is separate from this
   software test record and has not been captured here.
+
+## Addendum — 2026-08-17 (flowchart-alignment UI changes + label rename)
+
+Later the same day, the application was adjusted to align with an
+independently-produced flowchart (`Flowchart 2 BuahSafe.drawio.pdf`):
+explicit guard messages for the ID-jambu input (empty / invalid characters /
+accepted), a contextual retry button in the error inspector (retries the
+action that actually failed — connect vs. scan — instead of always
+retrying scan), and a label-vocabulary rename from `bagus`/`rusak` to
+`normal`/`anomali` across the backend, frontend, and this documentation set.
+
+```
+Command: python3 -m unittest discover -s tests -v
+Result:  Ran 54 tests in 1.075s — OK
+```
+
+The one additional test (54 vs. the 53 above) covers the new
+`_migrate_label_values()` step in `database.py`: legacy rows still labeled
+`bagus`/`rusak` are rewritten to `normal`/`anomali` on `initialize()`, and
+running `initialize()` multiple times is confirmed idempotent (no further
+changes after the first migration). No existing spectral data, `scan_no`,
+or `fruit_id` values are touched by this migration — only the `label` text
+column.
+
+Not covered by this addendum: a fresh physical hardware scan was not
+re-run after this change, since it touches only label text and
+client-side guard messaging, not the serial protocol, parser, or database
+insert path exercised by the 2026-08-17 hardware test above.

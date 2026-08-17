@@ -68,6 +68,12 @@ def initialize() -> None:
             "ON measurements(fruit_id)"
         )
 
+        # Label vocabulary berubah dari bagus/rusak ke normal/anomali (2026-08-17)
+        # supaya konsisten dengan flowchart aplikasi. Migrasi ini idempotent --
+        # aman dijalankan berkali-kali tiap startup, dan tidak melakukan apa-apa
+        # kalau tidak ada baris lama yang masih pakai label lama.
+        _migrate_label_values(connection)
+
 
 def _create_measurements_table(connection: sqlite3.Connection) -> None:
     columns_sql = ",\n                ".join(SCHEMA_COLUMNS)
@@ -140,6 +146,16 @@ def _migrate_legacy_schema(connection: sqlite3.Connection, old_columns: list[str
 
     connection.execute("DROP TABLE measurements")
     connection.execute("ALTER TABLE measurements_as7265x_migrated RENAME TO measurements")
+
+
+def _migrate_label_values(connection: sqlite3.Connection) -> None:
+    """Rename legacy label values (bagus/rusak) to the current vocabulary (normal/anomali).
+
+    Old rows keep their data untouched aside from this text value -- nothing
+    about the 18-channel spectrum or scan_no is affected.
+    """
+    connection.execute("UPDATE measurements SET label = 'normal' WHERE label = 'bagus'")
+    connection.execute("UPDATE measurements SET label = 'anomali' WHERE label = 'rusak'")
 
 
 def insert_measurement(fruit_id: str, reading: dict[str, Any]) -> dict[str, Any]:

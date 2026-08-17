@@ -32,7 +32,7 @@ logger = logging.getLogger("buahsafe.server")
 app = Flask(__name__)
 device = BuahSafeDevice()
 FRUIT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,30}$")
-VALID_LABELS = {"", "bagus", "rusak"}
+VALID_LABELS = {"", "normal", "anomali"}
 
 database.initialize()
 atexit.register(device.disconnect)
@@ -191,7 +191,7 @@ def api_update_label(measurement_id: int):
     payload = request.get_json(silent=True) or {}
     label = str(payload.get("label", "")).strip().lower()
     if label not in VALID_LABELS:
-        return jsonify({"error": "Label harus kosong, bagus, atau rusak"}), 400
+        return jsonify({"error": "Label harus kosong, normal, atau anomali"}), 400
     measurement = database.update_label(measurement_id, label)
     if measurement is None:
         return jsonify({"error": "Data tidak ditemukan"}), 404

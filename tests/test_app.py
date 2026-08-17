@@ -215,7 +215,7 @@ class TestApp(unittest.TestCase):
     def test_measurements_search_label_and_pagination(self):
         a = database.insert_measurement("JAMBU_SEARCH", self._sample_reading(1))
         database.insert_measurement("OTHER_FRUIT", self._sample_reading(1))
-        database.update_label(a["id"], "bagus")
+        database.update_label(a["id"], "normal")
 
         response = self.client.get("/api/measurements?q=SEARCH")
         data = response.get_json()
@@ -223,7 +223,7 @@ class TestApp(unittest.TestCase):
         self.assertEqual(data["measurements"][0]["fruit_id"], "JAMBU_SEARCH")
         self.assertEqual(data["total"], 1)
 
-        response = self.client.get("/api/measurements?label=bagus")
+        response = self.client.get("/api/measurements?label=normal")
         data = response.get_json()
         self.assertEqual(len(data["measurements"]), 1)
         self.assertEqual(data["measurements"][0]["fruit_id"], "JAMBU_SEARCH")

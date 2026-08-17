@@ -19,6 +19,7 @@ const elements = {
   deviceName: document.querySelector("#deviceName"),
   sensorStatus: document.querySelector("#sensorStatus"),
   fruitId: document.querySelector("#fruitId"),
+  fruitHint: document.querySelector("#fruitHint"),
   scanButton: document.querySelector("#scanButton"),
   scanButtonText: document.querySelector("#scanButtonText"),
   totalScans: document.querySelector("#totalScans"),
@@ -95,8 +96,11 @@ const state = {
   debugLogs: [],
   activeFilter: "all",
   lastErrorData: null,
+  lastErrorRetry: null,
   tableLoading: false,
 };
+
+const FRUIT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,30}$/;
 
 let toastTimer;
 let debugPollTimer;
@@ -126,8 +130,16 @@ function showToast(message, type = "success") {
   }, 5000);
 }
 
-function showErrorInspector(title, error) {
+function showErrorInspector(title, error, options = {}) {
   const nowStr = new Date().toLocaleTimeString("id-ID");
+  const { retryLabel = "🔄 Coba Lagi", onRetry = null } = options;
+
+  // Tombol "Coba lagi" harus mengulang aksi yang SEBENARNYA gagal (connect
+  // atau scan), bukan selalu scan -- kalau tidak, "Coba lagi" setelah gagal
+  // konek malah diam-diam mencoba scan dan membingungkan operator.
+  state.lastErrorRetry = onRetry;
+  elements.retryScanBtn.textContent = retryLabel;
+  elements.retryScanBtn.classList.toggle("hidden", !onRetry);
   const payload = error.payload || {};
   const details = payload.details || {};
   const rawLine = details.raw_line || payload.last_raw_line || error.raw_line || "";
@@ -240,8 +252,38 @@ function applyDeviceStatus(device) {
 }
 
 function updateScanAvailability() {
-  const validId = /^[A-Za-z0-9][A-Za-z0-9_-]{0,30}$/.test(elements.fruitId.value.trim());
+  const validId = FRUIT_ID_PATTERN.test(elements.fruitId.value.trim());
   elements.scanButton.disabled = !state.connected || !validId || state.scanning;
+  updateFruitIdHint(validId);
+}
+
+// Alur validasi ID jambu mengikuti flowchart: sambungkan ESP32 -> isi ID ->
+// ID diisi? -> ID valid (huruf/angka/_/-)? -> ID diterima. Pesan di bawah
+// input ini secara eksplisit menuntun operator lewat setiap langkah alih-alih
+// cuma menonaktifkan tombol scan tanpa penjelasan.
+function updateFruitIdHint(validId) {
+  if (!elements.fruitHint) return;
+  const raw = elements.fruitId.value.trim();
+
+  if (state.scanning) return; // biarkan status pemindaian yang tampil (lihat scan())
+
+  if (!state.connected) {
+    elements.fruitHint.textContent = "Hubungkan ESP32 terlebih dahulu untuk mulai memindai.";
+    elements.fruitHint.classList.remove("hint-ready");
+    elements.fruitHint.classList.add("hint-warning");
+  } else if (!raw) {
+    elements.fruitHint.textContent = "Masukkan ID jambu terlebih dahulu.";
+    elements.fruitHint.classList.remove("hint-ready");
+    elements.fruitHint.classList.add("hint-warning");
+  } else if (!validId) {
+    elements.fruitHint.textContent = "ID jambu hanya boleh berisi huruf, angka, garis bawah (_), atau tanda hubung (-).";
+    elements.fruitHint.classList.remove("hint-ready");
+    elements.fruitHint.classList.add("hint-warning");
+  } else {
+    elements.fruitHint.textContent = "ID diterima -- siap memindai. Satu klik memicu penyinaran halogen, buzzer, dan pembacaan 18 kanal AS7265x.";
+    elements.fruitHint.classList.remove("hint-warning");
+    elements.fruitHint.classList.add("hint-ready");
+  }
 }
 
 function applySummary(summary) {
@@ -314,8 +356,8 @@ function renderMeasurements() {
         <td>
           <select class="label-select" data-measurement-id="${row.id}" value="${escapeHtml(row.label)}" aria-label="Label ${escapeHtml(row.fruit_id)}">
             <option value="" ${row.label === "" ? "selected" : ""}>Kosong</option>
-            <option value="bagus" ${row.label === "bagus" ? "selected" : ""}>Bagus</option>
-            <option value="rusak" ${row.label === "rusak" ? "selected" : ""}>Rusak</option>
+            <option value="normal" ${row.label === "normal" ? "selected" : ""}>Normal</option>
+            <option value="anomali" ${row.label === "anomali" ? "selected" : ""}>Anomali</option>
           </select>
         </td>
         <td class="col-actions">
@@ -504,7 +546,13 @@ async function toggleConnection() {
       showToast(`ESP32 terhubung melalui ${payload.device.port}`);
     }
   } catch (error) {
-    showErrorInspector("Koneksi ESP32 Gagal", error);
+    showErrorInspector("Koneksi ESP32 Gagal", error, {
+      retryLabel: "🔄 Coba Sambungkan Lagi",
+      onRetry: () => {
+        hideErrorInspector();
+        toggleConnection();
+      },
+    });
     showToast(error.message, "error");
     const status = await api("/api/status").catch(() => null);
     if (status) applyDeviceStatus(status.device);
@@ -574,7 +622,14 @@ async function scan() {
   if (lastError) {
     elements.lastStatus.textContent = "Gagal";
     elements.lastStatusDetail.textContent = lastError.message;
-    showErrorInspector("Scan Spektrum Gagal", lastError);
+    showErrorInspector("Scan Spektrum Gagal", lastError, {
+      retryLabel: "🔄 Coba Scan Lagi",
+      onRetry: () => {
+        if (state.scanning) return;
+        hideErrorInspector();
+        scan();
+      },
+    });
     showToast(lastError.message, "error");
   }
 
@@ -763,9 +818,11 @@ elements.resetDbBtn.addEventListener("click", resetDatabase);
 
 // Error Inspector Actions
 elements.retryScanBtn.addEventListener("click", () => {
-  if (state.scanning) return;
-  hideErrorInspector();
-  scan();
+  if (typeof state.lastErrorRetry === "function") {
+    state.lastErrorRetry();
+  } else {
+    hideErrorInspector();
+  }
 });
 elements.copyErrorBtn.addEventListener("click", copyErrorDetails);
 elements.viewInConsoleBtn.addEventListener("click", () => {

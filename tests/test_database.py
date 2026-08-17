@@ -84,7 +84,9 @@ class TestDatabase(unittest.TestCase):
         row = rows[0]
         self.assertEqual(row["fruit_id"], "LEGACY_01")
         self.assertEqual(row["scan_no"], 1)
-        self.assertEqual(row["label"], "bagus")
+        # Label lama "bagus" juga harus ikut dimigrasikan ke vocabulary baru
+        # ("normal") oleh initialize() -- lihat _migrate_label_values().
+        self.assertEqual(row["label"], "normal")
         self.assertAlmostEqual(row["nm610"], 9.1)
         self.assertAlmostEqual(row["nm680"], 11.2)
         self.assertAlmostEqual(row["nm730"], 13.3)
@@ -94,6 +96,29 @@ class TestDatabase(unittest.TestCase):
         # Verify newly added channels default to 0.0
         self.assertAlmostEqual(row["nm410"], 0.0)
         self.assertAlmostEqual(row["nm940"], 0.0)
+
+    def test_label_vocabulary_migration_is_idempotent(self):
+        # Label lama bagus/rusak harus dimigrasikan ke normal/anomali saat
+        # initialize(), dan menjalankannya berkali-kali tidak boleh mengubah
+        # apa pun lagi (idempotent) -- lihat _migrate_label_values().
+        database.initialize()
+        a = database.insert_measurement("JAMBU_MIG_A", self._sample_reading(1))
+        b = database.insert_measurement("JAMBU_MIG_B", self._sample_reading(1))
+
+        conn = database.connect()
+        try:
+            conn.execute("UPDATE measurements SET label = 'bagus' WHERE id = ?", (a["id"],))
+            conn.execute("UPDATE measurements SET label = 'rusak' WHERE id = ?", (b["id"],))
+            conn.commit()
+        finally:
+            conn.close()
+
+        database.initialize()
+        database.initialize()  # jalankan dua kali untuk memastikan idempotent
+
+        rows = {row["id"]: row["label"] for row in database.all_measurements()}
+        self.assertEqual(rows[a["id"]], "normal")
+        self.assertEqual(rows[b["id"]], "anomali")
 
     def test_insert_and_retrieve_measurement(self):
         database.initialize()
@@ -134,9 +159,9 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(summ["unlabeled"], 1)
 
         # Update label
-        updated = database.update_label(inserted["id"], "bagus")
+        updated = database.update_label(inserted["id"], "normal")
         self.assertIsNotNone(updated)
-        self.assertEqual(updated["label"], "bagus")
+        self.assertEqual(updated["label"], "normal")
         self.assertEqual(database.summary()["unlabeled"], 0)
 
     def _sample_reading(self, scan_no: int) -> dict:
@@ -172,17 +197,17 @@ class TestDatabase(unittest.TestCase):
         database.initialize()
         a = database.insert_measurement("JAMBU_A", self._sample_reading(1))
         b = database.insert_measurement("JAMBU_B", self._sample_reading(1))
-        database.update_label(a["id"], "bagus")
-        database.update_label(b["id"], "rusak")
+        database.update_label(a["id"], "normal")
+        database.update_label(b["id"], "anomali")
 
         by_search = database.list_measurements(search="JAMBU_A")
         self.assertEqual([row["fruit_id"] for row in by_search], ["JAMBU_A"])
 
-        by_label = database.list_measurements(label="rusak")
+        by_label = database.list_measurements(label="anomali")
         self.assertEqual([row["fruit_id"] for row in by_label], ["JAMBU_B"])
 
         self.assertEqual(database.count_measurements(search="JAMBU_A"), 1)
-        self.assertEqual(database.count_measurements(label="bagus"), 1)
+        self.assertEqual(database.count_measurements(label="normal"), 1)
         self.assertEqual(database.count_measurements(), 2)
 
     def test_scan_no_ignores_device_reported_value_and_tracks_db_id(self):

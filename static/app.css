@@ -89,6 +89,7 @@ h2 { margin: 3px 0 0; font-size: 18px; }
 .retry-btn { background: var(--green); color: white; }
 .retry-btn:hover { background: #1c513e; transform: translateY(-1px); }
 .retry-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.retry-btn.hidden { display: none; }
 
 /* ============================================================
    Workspace Panels
@@ -110,6 +111,8 @@ h2 { margin: 3px 0 0; font-size: 18px; }
 .loading .scan-copy i { animation: pulse 850ms infinite alternate; }
 .scan-rings { position: absolute; width: 112px; height: 112px; right: -35px; top: -45px; border: 1px solid rgba(201, 240, 90, 0.35); border-radius: 50%; box-shadow: 0 0 0 20px rgba(201, 240, 90, 0.04), 0 0 0 40px rgba(201, 240, 90, 0.02); }
 .control-hint { margin: 12px 2px 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.control-hint.hint-warning { color: #a6631f; font-weight: 600; }
+.control-hint.hint-ready { color: var(--green); font-weight: 600; }
 
 .spectrum-panel { padding: 25px; }
 .spectrum-header { display: flex; align-items: flex-start; justify-content: space-between; }

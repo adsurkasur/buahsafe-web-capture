@@ -58,7 +58,7 @@ Each row contains:
 - validated uppercase `fruit_id`;
 - `scan_no` — the database's own `AUTOINCREMENT` row id, **not** the value the ESP32 reported. The firmware's own counter lives only in RAM and resets on every reboot, so it cannot be trusted as a stable identifier; the server overwrites it with the SQLite id immediately after insert, guaranteeing it is permanent, gap-free (never reused after a delete), and reboot-proof;
 - `nm410` through `nm940` for 18 wavelengths;
-- label: empty, `bagus`, or `rusak`.
+- label: empty, `normal`, or `anomali` (renamed from the earlier `bagus`/`rusak` vocabulary on 2026-08-17; `database.initialize()` migrates any existing rows automatically and is idempotent — see `_migrate_label_values()` in `database.py`).
 
 The application writes only after a successful parsed scan. The dashboard supports deleting individual rows, a selected batch, or **all data at once** via the "Reset Database" button in the records header — this also resets the `scan_no` autoincrement sequence back to 1, so use it only when starting a genuinely new dataset. All destructive actions require confirmation and are permanent (no undo, no soft-delete/trash). Local database files under `data/` are ignored by Git and must be backed up separately — export CSV regularly.
 
