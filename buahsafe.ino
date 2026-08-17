@@ -176,6 +176,8 @@ bool waitForSavedAck(uint32_t &scanNoOut, uint16_t timeoutMs) {
   const uint32_t deadline = millis() + timeoutMs;
 
   while (millis() < deadline) {
+    esp_task_wdt_reset();
+
     while (Serial.available() > 0) {
       const char incoming = static_cast<char>(Serial.read());
 
@@ -186,8 +188,26 @@ bool waitForSavedAck(uint32_t &scanNoOut, uint16_t timeoutMs) {
             scanNoOut = static_cast<uint32_t>(strtoul(buffer + 6, nullptr, 10));
             return true;
           }
-          len = 0;
+
+          // BUKAN bug jinak: baris ini bukan ack "SAVED,<n>", artinya
+          // kemungkinan besar command BARU (mis. SCAN operator berikutnya)
+          // yang kebetulan tiba justru saat jendela tunggu ack ini masih
+          // terbuka. Versi sebelumnya membuang baris ini diam-diam --
+          // itu = command HILANG PERMANEN tanpa error apa pun, dan server
+          // akan menunggu penuh sampai timeout 18 detik sebelum retry.
+          // Sekarang: taruh balik ke command buffer GLOBAL supaya langsung
+          // diproses oleh readSerialCommands() begitu fungsi ini kembali --
+          // bukan hilang diam-diam. Ack yang lagi ditunggu dianggap belum
+          // datang (return false); kalau ack asli menyusul tak lama lagi,
+          // dia akan nyasar lewat command loop biasa dan diabaikan dengan
+          // aman lewat cabang "SAVED," di processCommand() (sudah ada).
+          size_t copyLen = len < sizeof(commandBuffer) - 1 ? len : sizeof(commandBuffer) - 1;
+          memcpy(commandBuffer, buffer, copyLen);
+          commandBuffer[copyLen] = '\0';
+          commandLength = copyLen;
+          return false;
         }
+        len = 0;
         continue;
       }
 
@@ -253,32 +273,50 @@ void performScan(bool isRescan) {
   // Serial output (satu baris utuh dengan 20 kolom terformat)
   // ========================================================
 
-  String payload = "DATA,";
-  payload += String(scanNumber);
-
-  // AS72651 (410, 435, 460, 485, 510, 535 nm)
-  payload += ","; payload += String(spectralSensor.getCalibratedA(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedB(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedC(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedD(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedE(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedF(), 6);
-
-  // AS72652 (560, 585, 610, 645, 680, 705 nm)
-  payload += ","; payload += String(spectralSensor.getCalibratedG(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedH(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedR(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedI(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedS(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedJ(), 6);
-
-  // AS72653 (730, 760, 810, 860, 900, 940 nm)
-  payload += ","; payload += String(spectralSensor.getCalibratedT(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedU(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedV(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedW(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedK(), 6);
-  payload += ","; payload += String(spectralSensor.getCalibratedL(), 6);
+  // CATATAN RELIABILITAS: sebelumnya baris ini dibangun lewat ~20 kali
+  // pemanggilan `String::operator+=`. Arduino String itu heap-allocated dan
+  // REALLOC setiap kali kapasitasnya kurang -- di ESP32 dengan heap yang
+  // sudah agak terpakai (LCD, WiFi/BT stack milik core, dsb.), reallocation
+  // di tengah rangkaian concatenation seperti ini adalah sumber korupsi
+  // memori klasik. Ini cocok dengan gejala yang berulang kali teramati:
+  // byte sampah (mis. 0x0E lalu '>') selalu nyempil di field & posisi yang
+  // KONSISTEN (selalu channel 460nm / field ke-5, selalu nilai yang sama
+  // persis "0.942747") -- pola sedeterministik itu jauh lebih cocok dengan
+  // bug software (heap/buffer) daripada noise elektris acak, yang harusnya
+  // mengenai byte berbeda-beda tiap kali.
+  //
+  // Fix: bangun payload di STACK BUFFER berukuran tetap lewat satu kali
+  // snprintf(), tanpa alokasi heap sama sekali.
+  char payload[420];
+  snprintf(
+    payload, sizeof(payload),
+    "DATA,%lu,"
+    "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,"
+    "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,"
+    "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
+    static_cast<unsigned long>(scanNumber),
+    // AS72651 (410, 435, 460, 485, 510, 535 nm)
+    spectralSensor.getCalibratedA(),
+    spectralSensor.getCalibratedB(),
+    spectralSensor.getCalibratedC(),
+    spectralSensor.getCalibratedD(),
+    spectralSensor.getCalibratedE(),
+    spectralSensor.getCalibratedF(),
+    // AS72652 (560, 585, 610, 645, 680, 705 nm)
+    spectralSensor.getCalibratedG(),
+    spectralSensor.getCalibratedH(),
+    spectralSensor.getCalibratedR(),
+    spectralSensor.getCalibratedI(),
+    spectralSensor.getCalibratedS(),
+    spectralSensor.getCalibratedJ(),
+    // AS72653 (730, 760, 810, 860, 900, 940 nm)
+    spectralSensor.getCalibratedT(),
+    spectralSensor.getCalibratedU(),
+    spectralSensor.getCalibratedV(),
+    spectralSensor.getCalibratedW(),
+    spectralSensor.getCalibratedK(),
+    spectralSensor.getCalibratedL()
+  );
 
   // Kirimkan baris data utuh ke Serial
   Serial.println(payload);
@@ -567,4 +605,18 @@ void setup() {
 void loop() {
   esp_task_wdt_reset();
   readSerialCommands();
+
+  // waitForSavedAck() bisa "menyelamatkan" satu command yang nyasar tiba
+  // saat firmware masih nunggu ack SAVED (lihat komentar di sana) --
+  // tapi dia cuma menaruhnya balik ke commandBuffer, TIDAK memprosesnya
+  // langsung (supaya tidak reentrant lewat performScan() yang lagi jalan).
+  // Proses di sini, di top-level loop(), setelah semua call stack
+  // sebelumnya (readSerialCommands -> processCommand -> performScan ->
+  // waitForSavedAck) sudah selesai kembali dengan aman.
+  if (commandLength > 0) {
+    char pending[sizeof(commandBuffer)];
+    memcpy(pending, commandBuffer, commandLength + 1); // ikut null terminator
+    commandLength = 0;
+    processCommand(pending);
+  }
 }
