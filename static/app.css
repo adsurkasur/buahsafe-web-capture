@@ -86,6 +86,9 @@ h2 { margin: 3px 0 0; font-size: 18px; }
 .copy-btn:hover { background: #962a1c; transform: translateY(-1px); }
 .secondary-btn { background: white; color: #5c1810; border: 1px solid var(--danger-border); }
 .secondary-btn:hover { background: #fee2e2; }
+.retry-btn { background: var(--green); color: white; }
+.retry-btn:hover { background: #1c513e; transform: translateY(-1px); }
+.retry-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 /* ============================================================
    Workspace Panels

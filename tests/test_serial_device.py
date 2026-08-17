@@ -355,8 +355,8 @@ class TestSerialDevice(unittest.TestCase):
                 patch("serial_device.time.sleep") as mock_sleep:
             with self.assertRaises(DeviceError):
                 device.scan()
-        # 2 percobaan total -> 1 kali sleep di antara percobaan
-        self.assertEqual(mock_sleep.call_count, 1)
+        # 3 percobaan total -> 2 kali sleep di antara percobaan
+        self.assertEqual(mock_sleep.call_count, 2)
 
     # --- Hardening lanjutan: RESCAN, sinkronisasi LCD, deteksi reboot ---
 

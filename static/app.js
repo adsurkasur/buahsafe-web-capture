@@ -6,6 +6,11 @@ const WAVELENGTHS = [
 
 const CHANNEL_KEYS = WAVELENGTHS.map((w) => `nm${w}`);
 const PAGE_SIZE = 25;
+// Percobaan ulang otomatis TAMBAHAN di level browser, di luar retry internal
+// yang sudah dilakukan server (3x per request). Ini lapisan kedua untuk
+// kasus di mana bahkan retry internal server pun habis (gangguan elektris
+// yang lumayan panjang) -- operator tidak perlu klik ulang manual.
+const SCAN_AUTO_RETRY_LIMIT = 1;
 
 const elements = {
   portSelect: document.querySelector("#portSelect"),
@@ -54,6 +59,7 @@ const elements = {
   errorRawBoxWrap: document.querySelector("#errorRawBoxWrap"),
   errorRawData: document.querySelector("#errorRawData"),
   rawLengthInfo: document.querySelector("#rawLengthInfo"),
+  retryScanBtn: document.querySelector("#retryScanBtn"),
   copyErrorBtn: document.querySelector("#copyErrorBtn"),
   viewInConsoleBtn: document.querySelector("#viewInConsoleBtn"),
   closeErrorBtn: document.querySelector("#closeErrorBtn"),
@@ -508,39 +514,75 @@ async function toggleConnection() {
   }
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function scan() {
   state.scanning = true;
   hideErrorInspector();
   elements.scanButton.classList.add("loading");
-  elements.scanButtonText.textContent = "Sedang memindai...";
   elements.lastStatus.textContent = "Memindai";
   elements.lastStatusDetail.textContent = "Tunggu bunyi buzzer dan pembacaan 18 kanal AS7265x";
   updateScanAvailability();
 
-  try {
-    const payload = await api("/api/scan", {
-      method: "POST", body: JSON.stringify({ fruit_id: elements.fruitId.value.trim() }),
-    });
-    updateSpectrum(payload.measurement);
-    applySummary(payload.summary);
-    elements.lastStatus.textContent = "Berhasil";
-    elements.lastStatusDetail.textContent = `Scan #${payload.measurement.scan_no} tersimpan · baru saja`;
-    showToast(`Data ${payload.measurement.fruit_id} (#${payload.measurement.scan_no}) berhasil disimpan`);
-    // Scan baru selalu muncul di halaman pertama (urutan terbaru dulu).
-    state.offset = 0;
-    await fetchMeasurements();
-  } catch (error) {
-    elements.lastStatus.textContent = "Gagal";
-    elements.lastStatusDetail.textContent = error.message;
-    showErrorInspector("Scan Spektrum Gagal", error);
-    showToast(error.message, "error");
-  } finally {
-    state.scanning = false;
-    elements.scanButton.classList.remove("loading");
-    elements.scanButtonText.textContent = "Ambil satu scan";
-    updateScanAvailability();
-    fetchDebugLogs();
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= SCAN_AUTO_RETRY_LIMIT; attempt++) {
+    if (attempt === 0) {
+      elements.scanButtonText.textContent = "Sedang memindai...";
+    } else {
+      // Server sendiri sudah retry internal 3x sebelum menyerah -- kalau
+      // sampai di sini berarti itu pun gagal semua. Beri jeda sedikit lagi
+      // supaya tidak langsung menabrak gangguan yang sama, lalu coba lagi
+      // dari awal secara utuh (bukan cuma internal server).
+      elements.scanButtonText.textContent = `Gagal, mencoba ulang otomatis (${attempt}/${SCAN_AUTO_RETRY_LIMIT})...`;
+      elements.lastStatusDetail.textContent = "Percobaan sebelumnya gagal (kemungkinan noise sesaat) -- mencoba ulang otomatis...";
+      showToast("Scan gagal, mencoba ulang otomatis...", "error");
+      await wait(1000);
+    }
+
+    // Server sendiri diam-diam bisa retry sampai 3x kalau ada gangguan --
+    // dari sisi browser itu keliatan cuma satu request yang lama. Kasih
+    // kabar setelah beberapa detik supaya tidak terasa "macet" walau
+    // sebenarnya lagi bekerja di baliknya.
+    const slowNoticeTimer = setTimeout(() => {
+      elements.lastStatusDetail.textContent = "Masih mencoba di balik layar (server otomatis mengulang kalau ada gangguan sinyal) -- mohon tunggu...";
+    }, 9000);
+
+    try {
+      const payload = await api("/api/scan", {
+        method: "POST", body: JSON.stringify({ fruit_id: elements.fruitId.value.trim() }),
+      });
+      updateSpectrum(payload.measurement);
+      applySummary(payload.summary);
+      elements.lastStatus.textContent = "Berhasil";
+      elements.lastStatusDetail.textContent = `Scan #${payload.measurement.scan_no} tersimpan · baru saja`;
+      showToast(`Data ${payload.measurement.fruit_id} (#${payload.measurement.scan_no}) berhasil disimpan`);
+      // Scan baru selalu muncul di halaman pertama (urutan terbaru dulu).
+      state.offset = 0;
+      await fetchMeasurements();
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(slowNoticeTimer);
+    }
   }
+
+  if (lastError) {
+    elements.lastStatus.textContent = "Gagal";
+    elements.lastStatusDetail.textContent = lastError.message;
+    showErrorInspector("Scan Spektrum Gagal", lastError);
+    showToast(lastError.message, "error");
+  }
+
+  state.scanning = false;
+  elements.scanButton.classList.remove("loading");
+  elements.scanButtonText.textContent = "Ambil satu scan";
+  updateScanAvailability();
+  fetchDebugLogs();
 }
 
 async function updateLabel(select) {
@@ -720,6 +762,11 @@ elements.nextPageBtn.addEventListener("click", () => goToPage(1));
 elements.resetDbBtn.addEventListener("click", resetDatabase);
 
 // Error Inspector Actions
+elements.retryScanBtn.addEventListener("click", () => {
+  if (state.scanning) return;
+  hideErrorInspector();
+  scan();
+});
 elements.copyErrorBtn.addEventListener("click", copyErrorDetails);
 elements.viewInConsoleBtn.addEventListener("click", () => {
   hideErrorInspector();

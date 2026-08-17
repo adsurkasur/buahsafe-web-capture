@@ -317,9 +317,14 @@ class BuahSafeDevice:
             # Sesekali satu byte di tengah baris data rusak akibat noise
             # elektris sesaat (mis. dari relay) -- ini BUKAN masalah sensor,
             # cuma transmisi kali ini yang cacat. Daripada langsung
-            # menyerahkan error mentah ke operator, coba ulang otomatis satu
-            # kali sebelum benar-benar menyerah.
-            max_attempts = 2
+            # menyerahkan error mentah ke operator, coba ulang otomatis
+            # beberapa kali sebelum benar-benar menyerah. Jeda antar
+            # percobaan sengaja tidak terlalu singkat (1.5s, bukan 0.3s) --
+            # kalau sumbernya memang transien elektris (relay), memberi
+            # sedikit waktu untuk reda dulu lebih mungkin berhasil daripada
+            # langsung mencoba lagi di tengah gangguan yang sama.
+            max_attempts = 3
+            retry_delay_seconds = 1.5
             last_error: DeviceError | None = None
             for attempt in range(1, max_attempts + 1):
                 if not self.connected or self._serial is None:
@@ -338,7 +343,7 @@ class BuahSafeDevice:
                             "kemungkinan noise transmisi sesaat, mencoba ulang otomatis...",
                             raw_data=error.raw_line,
                         )
-                        time.sleep(0.3)
+                        time.sleep(retry_delay_seconds)
                         continue
 
             assert last_error is not None
