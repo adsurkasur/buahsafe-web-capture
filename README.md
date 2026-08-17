@@ -1,6 +1,6 @@
 # BuahSafe Web Capture
 
-> Untuk operasi perangkat, pemeliharaan kode, dan pembekuan versi HAKI, baca [`docs/OPERATOR_AND_MAINTAINER_GUIDE.md`](docs/OPERATOR_AND_MAINTAINER_GUIDE.md) dan [`docs/HAKI_RELEASE_CHECKLIST.md`](docs/HAKI_RELEASE_CHECKLIST.md).
+> Untuk operasi perangkat, pemeliharaan kode, dan pembekuan versi HAKI, baca [`docs/OPERATOR_AND_MAINTAINER_GUIDE.md`](docs/OPERATOR_AND_MAINTAINER_GUIDE.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (diagram arsitektur/data-flow), dan [`docs/HAKI_RELEASE_CHECKLIST.md`](docs/HAKI_RELEASE_CHECKLIST.md).
 
 Dashboard Flask lokal untuk mengambil dataset mentah 18 kanal AS7265x melalui
 ESP32. Setiap klik menghasilkan satu pembacaan dan satu record SQLite.

@@ -1,6 +1,6 @@
 ---
 status: active-checklist
-last_verified: 2026-08-15
+last_verified: 2026-08-17
 audience: authorized-maintainers
 sensitivity: restricted
 ---
@@ -21,21 +21,21 @@ sensitivity: restricted
 - [ ] Clean release commit created.
 - [ ] Release version/tag recorded.
 - [ ] `git status` clean except explicitly excluded local data.
-- [ ] Automated tests pass.
+- [x] Automated tests pass. — 53/53, 2026-08-17. See `TEST_RESULTS_2026-08-17.md`.
 - [ ] Source snapshot excludes `.venv`, SQLite data, cache, device logs, and temporary files.
 - [ ] Snapshot and key documents have SHA-256 hashes.
 
 ## Program evidence
 
-- [ ] One-paragraph and full program descriptions.
-- [ ] Architecture/data-flow diagram.
-- [ ] Feature inventory.
-- [ ] Installation and operating guide.
-- [ ] Serial protocol and database schema summary.
-- [ ] Synthetic-data screenshots of disconnected, connected, scan, history, label, debug, and CSV flow.
-- [ ] Test result record.
-- [ ] Physical demonstration evidence, or an explicit note that hardware validation is separate.
-- [ ] Known limitations and claim boundaries.
+- [x] One-paragraph and full program descriptions. — `ARCHITECTURE.md`.
+- [x] Architecture/data-flow diagram. — `ARCHITECTURE.md` (component diagram + scan-retry sequence diagram).
+- [x] Feature inventory. — `ARCHITECTURE.md` component/layer breakdown covers this; a standalone bullet list can be split out if the DJKI form requires a separate document.
+- [x] Installation and operating guide. — `README.md` + `OPERATOR_AND_MAINTAINER_GUIDE.md`.
+- [x] Serial protocol and database schema summary. — `OPERATOR_AND_MAINTAINER_GUIDE.md` "Hardware and serial contract" + "Data contract" sections.
+- [ ] Synthetic-data screenshots of disconnected, connected, scan, history, label, debug, and CSV flow. — real (non-synthetic) screenshots of connected/scan/history/label flow were captured during 2026-08-17 browser E2E testing but not archived as files; needs a dedicated pass with either synthetic sample data or explicit permission to use real captured data.
+- [x] Test result record. — `TEST_RESULTS_2026-08-17.md` (automated + manual E2E + firmware fix verification).
+- [ ] Physical demonstration evidence, or an explicit note that hardware validation is separate. — note added in `OPERATOR_AND_MAINTAINER_GUIDE.md` Known limitations ("No physical enclosure/lighting standardization proven by source"); actual photo/video evidence not yet captured.
+- [x] Known limitations and claim boundaries. — `OPERATOR_AND_MAINTAINER_GUIDE.md` "Known limitations and claim boundaries" section, dated 2026-08-17.
 
 ## Portal preparation
 
