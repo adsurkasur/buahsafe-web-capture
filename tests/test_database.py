@@ -218,6 +218,30 @@ class TestDatabase(unittest.TestCase):
         # bukan mengisi ulang nomor yang baru dihapus.
         self.assertGreater(new_row["scan_no"], max(ids))
 
+    def test_reset_all_measurements(self):
+        database.initialize()
+        for i in range(1, 4):
+            database.insert_measurement(f"JAMBU_{i}", self._sample_reading(i))
+        self.assertEqual(database.summary()["total_scans"], 3)
+
+        deleted = database.reset_all_measurements()
+        self.assertEqual(deleted, 3)
+        self.assertEqual(database.summary(), {"total_scans": 0, "total_fruits": 0, "unlabeled": 0})
+        self.assertEqual(database.all_measurements(), [])
+
+        # Setelah reset, penomoran harus mulai dari 1 lagi (bukan lanjut
+        # dari id/scan_no terakhir sebelum reset).
+        fresh = database.insert_measurement("JAMBU_NEW", self._sample_reading(1))
+        self.assertEqual(fresh["id"], 1)
+        self.assertEqual(fresh["scan_no"], 1)
+
+    def test_reset_all_measurements_on_empty_database(self):
+        database.initialize()
+        # Tidak boleh error meski belum pernah ada insert sama sekali
+        # (tabel sqlite_sequence belum tentu ada).
+        deleted = database.reset_all_measurements()
+        self.assertEqual(deleted, 0)
+
     def test_list_measurements_pagination(self):
         database.initialize()
         for i in range(1, 6):

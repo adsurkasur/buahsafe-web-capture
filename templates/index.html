@@ -131,7 +131,10 @@
       <section id="records" class="panel records-panel">
         <header class="records-header">
           <div><span class="field-label">Data mentah</span><h2>Riwayat pengukuran (18 kanal)</h2></div>
-          <a class="export-button" href="/export.csv">Unduh CSV <span>↘</span></a>
+          <div class="records-header-actions">
+            <a class="export-button" href="/export.csv">Unduh CSV <span>↘</span></a>
+            <button id="resetDbBtn" class="reset-db-btn" type="button" title="Hapus SEMUA data pengukuran">🗑️ Reset Database</button>
+          </div>
         </header>
 
         <div class="records-toolbar">

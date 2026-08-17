@@ -237,6 +237,32 @@ def delete_measurement(measurement_id: int) -> bool:
     return cursor.rowcount > 0
 
 
+def reset_all_measurements() -> int:
+    """Hapus SEMUA baris pengukuran dan reset counter AUTOINCREMENT ke 0.
+
+    Dipakai untuk tombol "Reset Database" di UI -- membersihkan seluruh data
+    testing sekaligus sebelum sesi pengambilan data yang sebenarnya dimulai.
+    Berbeda dari delete_measurement()/delete_measurements() (yang sengaja
+    TIDAK pernah mendaur ulang id/scan_no supaya riwayat yang sedang
+    berjalan tidak membingungkan): reset ini adalah "mulai dari nol" yang
+    eksplisit diminta operator, jadi scan_no/id berikutnya memang seharusnya
+    mulai lagi dari 1.
+    """
+    with database_connection() as connection:
+        cursor = connection.execute("DELETE FROM measurements")
+        deleted = cursor.rowcount
+        # sqlite_sequence cuma ada setelah insert AUTOINCREMENT pertama --
+        # cek dulu supaya tidak error di database yang benar-benar kosong.
+        has_sequence_table = connection.execute(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'"
+        ).fetchone()[0]
+        if has_sequence_table:
+            connection.execute(
+                "DELETE FROM sqlite_sequence WHERE name = 'measurements'"
+            )
+    return deleted
+
+
 def delete_measurements(measurement_ids: list[int]) -> int:
     if not measurement_ids:
         return 0

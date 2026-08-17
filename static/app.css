@@ -136,6 +136,9 @@ h2 { margin: 3px 0 0; font-size: 18px; }
 .export-button { padding: 10px 13px; border-radius: 10px; background: var(--green); color: white; font-size: 10px; font-weight: 800; text-decoration: none; transition: 150ms ease; }
 .export-button:hover { background: #1c513e; transform: translateY(-1px); }
 .export-button span { color: var(--acid); }
+.records-header-actions { display: flex; align-items: center; gap: 10px; }
+.reset-db-btn { padding: 10px 13px; border: 1px solid var(--danger); border-radius: 10px; background: none; color: var(--danger); font-size: 10px; font-weight: 800; cursor: pointer; transition: 150ms ease; }
+.reset-db-btn:hover { background: var(--danger); color: white; transform: translateY(-1px); }
 
 /* ============================================================
    Records toolbar: search, filter, bulk actions

@@ -7,6 +7,7 @@ from serial_device import (
     WAVELENGTHS,
     BuahSafeDevice,
     DeviceError,
+    debug_logger,
     parse_data_line,
 )
 
@@ -154,6 +155,7 @@ class TestSerialDevice(unittest.TestCase):
         device = BuahSafeDevice()
         mock_serial = MagicMock()
         mock_serial.is_open = True
+        mock_serial.in_waiting = 0
         device._serial = mock_serial
 
         sample_line = (
@@ -172,6 +174,7 @@ class TestSerialDevice(unittest.TestCase):
         device = BuahSafeDevice()
         mock_serial = MagicMock()
         mock_serial.is_open = True
+        mock_serial.in_waiting = 0
         device._serial = mock_serial
 
         # First read_until timed out with partial bytes, second finished with newline
@@ -230,6 +233,7 @@ class TestSerialDevice(unittest.TestCase):
         device = BuahSafeDevice()
         mock_serial = MagicMock()
         mock_serial.is_open = True
+        mock_serial.in_waiting = 0
         device._serial = mock_serial
 
         # Kasus nyata yang dilaporkan: raw_line lengkap & valid (169 char),
@@ -258,6 +262,7 @@ class TestSerialDevice(unittest.TestCase):
         device = BuahSafeDevice()
         mock_serial = MagicMock()
         mock_serial.is_open = True
+        mock_serial.in_waiting = 0
         device._serial = mock_serial
 
         timeout_error = DeviceError("ESP32 tidak merespons sebelum timeout.", raw_line="")
@@ -271,6 +276,7 @@ class TestSerialDevice(unittest.TestCase):
         device = BuahSafeDevice()
         mock_serial = MagicMock()
         mock_serial.is_open = True
+        mock_serial.in_waiting = 0
         device._serial = mock_serial
 
         timeout_error = DeviceError(
@@ -287,6 +293,7 @@ class TestSerialDevice(unittest.TestCase):
         device = BuahSafeDevice()
         mock_serial = MagicMock()
         mock_serial.is_open = True
+        mock_serial.in_waiting = 0
         device._serial = mock_serial
 
         valid_line = (
@@ -318,6 +325,7 @@ class TestSerialDevice(unittest.TestCase):
         device = BuahSafeDevice()
         mock_serial = MagicMock()
         mock_serial.is_open = True
+        mock_serial.in_waiting = 0
         device._serial = mock_serial
 
         first_line = (
@@ -339,6 +347,7 @@ class TestSerialDevice(unittest.TestCase):
         device = BuahSafeDevice()
         mock_serial = MagicMock()
         mock_serial.is_open = True
+        mock_serial.in_waiting = 0
         device._serial = mock_serial
 
         timeout_error = DeviceError("ESP32 tidak merespons sebelum timeout.", raw_line="")
@@ -348,6 +357,112 @@ class TestSerialDevice(unittest.TestCase):
                 device.scan()
         # 2 percobaan total -> 1 kali sleep di antara percobaan
         self.assertEqual(mock_sleep.call_count, 1)
+
+    # --- Hardening lanjutan: RESCAN, sinkronisasi LCD, deteksi reboot ---
+
+    def test_scan_first_attempt_sends_scan_not_rescan(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        mock_serial.in_waiting = 0
+        device._serial = mock_serial
+
+        sample_line = (
+            "DATA,1,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,"
+            "10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0"
+        )
+        with patch.object(device, "_wait_for", return_value=sample_line):
+            device.scan()
+        mock_serial.write.assert_called_with(b"SCAN\n")
+
+    def test_scan_retry_sends_rescan_not_scan(self):
+        # Percobaan kedua (retry otomatis) harus memakai command RESCAN,
+        # bukan SCAN -- supaya firmware tahu ini pengulangan dan bisa
+        # menampilkan "Mencoba ulang..." di LCD, bukan seolah scan baru.
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        mock_serial.in_waiting = 0
+        device._serial = mock_serial
+
+        valid_line = (
+            "DATA,9,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,"
+            "10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0"
+        )
+        with patch.object(
+            device,
+            "_wait_for",
+            side_effect=[
+                DeviceError("ESP32 tidak merespons sebelum timeout.", raw_line=""),
+                valid_line,
+            ],
+        ), patch("serial_device.time.sleep"):
+            device.scan()
+
+        calls = [call.args[0] for call in mock_serial.write.call_args_list]
+        self.assertEqual(calls, [b"SCAN\n", b"RESCAN\n"])
+
+    def test_drain_and_check_reboot_logs_warning_on_boot_signature(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        mock_serial.in_waiting = 40
+        mock_serial.read.return_value = b"\r\nBOOT,BUAHSAFE_AS7265X\r\nREADY,BUAHSAFE_AS7265X_V1\r\n"
+        device._serial = mock_serial
+
+        device._drain_and_check_reboot()
+
+        mock_serial.read.assert_called_with(40)
+        mock_serial.reset_input_buffer.assert_called_once()
+        recent = debug_logger.get_logs(10)
+        self.assertTrue(any(
+            entry["level"] == "WARN" and "reboot terdeteksi" in entry["message"]
+            for entry in recent
+        ))
+
+    def test_drain_and_check_reboot_silent_when_no_pending_bytes(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        mock_serial.in_waiting = 0
+        device._serial = mock_serial
+
+        debug_logger.clear()
+        device._drain_and_check_reboot()
+
+        mock_serial.read.assert_not_called()
+        mock_serial.reset_input_buffer.assert_called_once()
+        self.assertEqual(debug_logger.get_logs(10), [])
+
+    def test_notify_saved_writes_ack_when_connected(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        device._serial = mock_serial
+
+        device.notify_saved(42)
+
+        mock_serial.write.assert_called_with(b"SAVED,42\n")
+        mock_serial.flush.assert_called()
+
+    def test_notify_saved_noop_when_not_connected(self):
+        device = BuahSafeDevice()
+        device._serial = None
+
+        # Tidak boleh raise walau device belum/tidak terhubung sama sekali --
+        # ini best-effort, bukan operasi kritis.
+        device.notify_saved(1)
+
+    def test_notify_saved_failure_does_not_raise(self):
+        device = BuahSafeDevice()
+        mock_serial = MagicMock()
+        mock_serial.is_open = True
+        mock_serial.write.side_effect = OSError("port hilang")
+        device._serial = mock_serial
+
+        # Gagal kirim ack tidak boleh melempar exception -- data sudah aman
+        # di database, ini cuma sinkronisasi tampilan LCD yang best-effort.
+        device.notify_saved(1)
 
 
 if __name__ == "__main__":

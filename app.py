@@ -112,6 +112,10 @@ def api_scan():
         "DATABASE",
         f"Record tersimpan ID={measurement['id']} (Buah={fruit_id}, Scan #{measurement['scan_no']})",
     )
+    # Beri tahu firmware scan_no yang SAH (dari database) supaya LCD sinkron.
+    # Best-effort: kegagalan di sini tidak boleh menggagalkan response API,
+    # data sudah aman tersimpan di database terlepas dari ini.
+    device.notify_saved(measurement["scan_no"])
     return jsonify({
         "measurement": measurement,
         "summary": database.summary(),
@@ -168,6 +172,16 @@ def api_bulk_delete_measurements():
     debug_logger.add(
         "INFO", "DATABASE",
         f"Bulk delete: {deleted_count} record dihapus (diminta {len(clean_ids)})",
+    )
+    return jsonify({"deleted_count": deleted_count, "summary": database.summary()})
+
+
+@app.delete("/api/measurements")
+def api_reset_measurements():
+    deleted_count = database.reset_all_measurements()
+    debug_logger.add(
+        "WARN", "DATABASE",
+        f"RESET DATABASE: {deleted_count} record dihapus (seluruh data, counter direset)",
     )
     return jsonify({"deleted_count": deleted_count, "summary": database.summary()})
 

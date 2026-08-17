@@ -37,6 +37,7 @@ const elements = {
   prevPageBtn: document.querySelector("#prevPageBtn"),
   nextPageBtn: document.querySelector("#nextPageBtn"),
   pageIndicator: document.querySelector("#pageIndicator"),
+  resetDbBtn: document.querySelector("#resetDbBtn"),
 
   // Confirm dialog
   confirmDialog: document.querySelector("#confirmDialog"),
@@ -431,6 +432,30 @@ async function deleteBulkRows() {
   }
 }
 
+async function resetDatabase() {
+  const ok = await showConfirm(
+    "Reset seluruh database?",
+    `SEMUA ${state.total} data pengukuran akan dihapus permanen -- termasuk yang tidak terlihat di halaman/filter saat ini. Nomor scan akan mulai lagi dari 1. Aksi ini tidak bisa dibatalkan.`,
+    "Ya, Reset Semua",
+  );
+  if (!ok) return;
+
+  try {
+    const payload = await api("/api/measurements", { method: "DELETE" });
+    state.selectedIds.clear();
+    state.offset = 0;
+    state.search = "";
+    elements.searchInput.value = "";
+    state.labelFilter = "__all__";
+    elements.labelFilter.value = "__all__";
+    applySummary(payload.summary);
+    showToast(`Database direset · ${payload.deleted_count} data dihapus`);
+    await fetchMeasurements();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
 async function loadPorts() {
   try {
     const payload = await api("/api/ports");
@@ -692,6 +717,7 @@ elements.labelFilter.addEventListener("change", () => {
 });
 elements.prevPageBtn.addEventListener("click", () => goToPage(-1));
 elements.nextPageBtn.addEventListener("click", () => goToPage(1));
+elements.resetDbBtn.addEventListener("click", resetDatabase);
 
 // Error Inspector Actions
 elements.copyErrorBtn.addEventListener("click", copyErrorDetails);

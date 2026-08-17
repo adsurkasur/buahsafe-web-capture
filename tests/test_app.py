@@ -75,7 +75,8 @@ class TestApp(unittest.TestCase):
             "nm900": 17.0,
             "nm940": 18.0,
         }
-        with patch.object(flask_app.device, "scan", return_value=mock_reading):
+        with patch.object(flask_app.device, "scan", return_value=mock_reading), \
+                patch.object(flask_app.device, "notify_saved") as mock_notify:
             response = self.client.post("/api/scan", json={"fruit_id": "JAMBU_001"})
             self.assertEqual(response.status_code, 200)
             data = response.get_json()
@@ -85,6 +86,9 @@ class TestApp(unittest.TestCase):
             self.assertAlmostEqual(measurement["nm410"], 1.0)
             self.assertAlmostEqual(measurement["nm940"], 18.0)
             self.assertNotIn("sensor_temp_c", measurement)
+            # Firmware harus diberi tahu scan_no yang SAH (dari database) supaya
+            # LCD bisa sinkron, bukan pakai counter lokal firmware.
+            mock_notify.assert_called_once_with(measurement["scan_no"])
 
     def test_scan_device_error_handled(self):
         with patch.object(flask_app.device, "scan", side_effect=DeviceError("AS7265X not ready")):
@@ -188,6 +192,25 @@ class TestApp(unittest.TestCase):
         # Empty list -> 400
         response = self.client.post("/api/measurements/bulk-delete", json={"ids": []})
         self.assertEqual(response.status_code, 400)
+
+    def test_reset_measurements_endpoint(self):
+        for i in range(1, 4):
+            database.insert_measurement(f"JAMBU_{i}", self._sample_reading(i))
+
+        response = self.client.delete("/api/measurements")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["deleted_count"], 3)
+        self.assertEqual(data["summary"]["total_scans"], 0)
+
+        # Database sudah bersih -- reset lagi harus tetap aman (bukan error).
+        response = self.client.delete("/api/measurements")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["deleted_count"], 0)
+
+        # Penomoran mulai dari 1 lagi setelah reset.
+        fresh = database.insert_measurement("JAMBU_NEW", self._sample_reading(1))
+        self.assertEqual(fresh["scan_no"], 1)
 
     def test_measurements_search_label_and_pagination(self):
         a = database.insert_measurement("JAMBU_SEARCH", self._sample_reading(1))

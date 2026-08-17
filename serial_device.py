@@ -327,7 +327,7 @@ class BuahSafeDevice:
                     # tidak ada gunanya coba lagi.
                     break
                 try:
-                    return self._perform_scan_attempt()
+                    return self._perform_scan_attempt(is_retry=(attempt > 1))
                 except DeviceError as error:
                     last_error = error
                     if attempt < max_attempts:
@@ -344,14 +344,19 @@ class BuahSafeDevice:
             assert last_error is not None
             raise last_error
 
-    def _perform_scan_attempt(self) -> dict[str, float | int]:
+    def _perform_scan_attempt(self, is_retry: bool = False) -> dict[str, float | int]:
         assert self._serial is not None
         try:
             debug_logger.add("INFO", "DEVICE", "Memulai proses scan: membersihkan buffer input...")
-            self._serial.reset_input_buffer()
+            self._drain_and_check_reboot()
 
-            debug_logger.add("INFO", "SERIAL_TX", "Mengirim perintah SCAN\\n...")
-            self._serial.write(b"SCAN\n")
+            # RESCAN (bukan SCAN) dikirim khusus saat ini adalah percobaan
+            # ulang otomatis -- firmware akan menampilkan "Mencoba ulang..."
+            # di LCD alih-alih "Memindai..." supaya operator tahu ini bukan
+            # scan baru biasa yang diminta ulang dari awal.
+            command = b"RESCAN\n" if is_retry else b"SCAN\n"
+            debug_logger.add("INFO", "SERIAL_TX", f"Mengirim perintah {command.decode().strip()}\\n...")
+            self._serial.write(command)
             self._serial.flush()
 
             line = self._wait_for("DATA,", timeout=18.0, prefix=True)
@@ -409,6 +414,64 @@ class BuahSafeDevice:
             debug_logger.add("ERROR", "SCAN", f"Scan gagal: {error}", raw_data=self.last_raw_message)
             self.disconnect(keep_error=True)
             raise DeviceError(f"Scan gagal: {error}") from error
+
+    def _drain_and_check_reboot(self) -> None:
+        """Baca & buang byte yang nyangkut di buffer serial sebelum kirim
+        command baru -- tapi INTIP dulu isinya sebelum dibuang.
+
+        Sebelumnya di sini cuma reset_input_buffer() polos: kalau ESP32
+        reboot sendiri di antara dua scan (mis. brownout akibat noise
+        relay), baris "BOOT,.../READY,..." yang harusnya jadi bukti
+        kejadian itu kebuang diam-diam tanpa pernah tercatat -- operator
+        cuma lihat data aneh tanpa penjelasan. Sekarang baris semacam itu
+        dicatat sebagai WARN yang jelas dulu sebelum buffer dibersihkan,
+        supaya reboot di tengah sesi jadi kejadian yang TERLIHAT & tercatat,
+        bukan senyap.
+        """
+        assert self._serial is not None
+        try:
+            pending_count = self._serial.in_waiting
+        except (serial.SerialException, OSError):
+            pending_count = 0
+
+        if pending_count:
+            pending = self._serial.read(pending_count)
+            if pending:
+                text = pending.decode("utf-8", errors="replace")
+                if "BOOT," in text or "READY," in text:
+                    debug_logger.add(
+                        "WARN",
+                        "DEVICE",
+                        "ESP32 reboot terdeteksi sejak scan terakhir (kemungkinan "
+                        "brownout/noise relay) -- melanjutkan scan berikutnya, tapi "
+                        "kalau ini sering terjadi periksa kestabilan daya relay.",
+                        raw_data=text.strip()[:200],
+                    )
+
+        self._serial.reset_input_buffer()
+
+    def notify_saved(self, scan_no: int) -> None:
+        """Beri tahu firmware bahwa data BENAR-BENAR sudah tersimpan di
+        database, supaya LCD bisa menampilkan scan_no yang sah (bukan
+        tebakan counter lokal firmware yang reset tiap reboot).
+
+        Best-effort dan non-blocking secara desain: kalau gagal terkirim,
+        cukup log WARN -- data sudah aman di database terlepas dari apakah
+        LCD berhasil di-update, jadi ini TIDAK BOLEH menggagalkan response
+        API ke browser.
+        """
+        with self._lock:
+            if not self.connected or self._serial is None:
+                return
+            try:
+                self._serial.write(f"SAVED,{scan_no}\n".encode("ascii"))
+                self._serial.flush()
+                debug_logger.add("DEBUG", "SERIAL_TX", f"Mengirim SAVED,{scan_no}\\n ke firmware...")
+            except (serial.SerialException, OSError) as error:
+                debug_logger.add(
+                    "WARN", "DEVICE",
+                    f"Gagal mengirim ack SAVED,{scan_no} ke firmware (data tetap aman di database): {error}",
+                )
 
     def _read_complete_line(
         self,
