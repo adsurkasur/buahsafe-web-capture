@@ -5,6 +5,12 @@ const WAVELENGTHS = [
 ];
 
 const CHANNEL_KEYS = WAVELENGTHS.map((w) => `nm${w}`);
+const PAGE_SIZE = 25;
+// Percobaan ulang otomatis TAMBAHAN di level browser, di luar retry internal
+// yang sudah dilakukan server (3x per request). Ini lapisan kedua untuk
+// kasus di mana bahkan retry internal server pun habis (gangguan elektris
+// yang lumayan panjang) -- operator tidak perlu klik ulang manual.
+const SCAN_AUTO_RETRY_LIMIT = 1;
 
 const elements = {
   portSelect: document.querySelector("#portSelect"),
@@ -24,6 +30,27 @@ const elements = {
   liveClock: document.querySelector("#liveClock"),
   toast: document.querySelector("#toast"),
 
+  // Records toolbar / data management
+  searchInput: document.querySelector("#searchInput"),
+  labelFilter: document.querySelector("#labelFilter"),
+  selectAllCheck: document.querySelector("#selectAllCheck"),
+  bulkActionsBar: document.querySelector("#bulkActionsBar"),
+  bulkSelectedCount: document.querySelector("#bulkSelectedCount"),
+  bulkDeleteBtn: document.querySelector("#bulkDeleteBtn"),
+  bulkClearBtn: document.querySelector("#bulkClearBtn"),
+  paginationInfo: document.querySelector("#paginationInfo"),
+  prevPageBtn: document.querySelector("#prevPageBtn"),
+  nextPageBtn: document.querySelector("#nextPageBtn"),
+  pageIndicator: document.querySelector("#pageIndicator"),
+  resetDbBtn: document.querySelector("#resetDbBtn"),
+
+  // Confirm dialog
+  confirmDialog: document.querySelector("#confirmDialog"),
+  confirmTitle: document.querySelector("#confirmTitle"),
+  confirmMessage: document.querySelector("#confirmMessage"),
+  confirmCancelBtn: document.querySelector("#confirmCancelBtn"),
+  confirmOkBtn: document.querySelector("#confirmOkBtn"),
+
   // Error Inspector Elements
   errorInspector: document.querySelector("#errorInspector"),
   errorInspectorTitle: document.querySelector("#errorInspectorTitle"),
@@ -32,6 +59,7 @@ const elements = {
   errorRawBoxWrap: document.querySelector("#errorRawBoxWrap"),
   errorRawData: document.querySelector("#errorRawData"),
   rawLengthInfo: document.querySelector("#rawLengthInfo"),
+  retryScanBtn: document.querySelector("#retryScanBtn"),
   copyErrorBtn: document.querySelector("#copyErrorBtn"),
   viewInConsoleBtn: document.querySelector("#viewInConsoleBtn"),
   closeErrorBtn: document.querySelector("#closeErrorBtn"),
@@ -59,13 +87,20 @@ const state = {
   port: null,
   scanning: false,
   measurements: [],
+  total: 0,
+  offset: 0,
+  search: "",
+  labelFilter: "__all__",
+  selectedIds: new Set(),
   debugLogs: [],
   activeFilter: "all",
   lastErrorData: null,
+  tableLoading: false,
 };
 
 let toastTimer;
 let debugPollTimer;
+let searchDebounceTimer;
 
 async function api(url, options = {}) {
   const response = await fetch(url, {
@@ -154,6 +189,37 @@ async function copyErrorDetails() {
   }
 }
 
+// ============================================================
+// Confirm Dialog (pengganti window.confirm untuk aksi destruktif)
+// ============================================================
+
+function showConfirm(title, message, confirmLabel = "Hapus") {
+  elements.confirmTitle.textContent = title;
+  elements.confirmMessage.textContent = message;
+  elements.confirmOkBtn.textContent = confirmLabel;
+  elements.confirmDialog.classList.remove("hidden");
+
+  return new Promise((resolve) => {
+    const cleanup = (result) => {
+      elements.confirmDialog.classList.add("hidden");
+      elements.confirmOkBtn.removeEventListener("click", onOk);
+      elements.confirmCancelBtn.removeEventListener("click", onCancel);
+      elements.confirmDialog.removeEventListener("click", onOverlay);
+      document.removeEventListener("keydown", onKey);
+      resolve(result);
+    };
+    const onOk = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onOverlay = (e) => { if (e.target === elements.confirmDialog) cleanup(false); };
+    const onKey = (e) => { if (e.key === "Escape") cleanup(false); };
+
+    elements.confirmOkBtn.addEventListener("click", onOk);
+    elements.confirmCancelBtn.addEventListener("click", onCancel);
+    elements.confirmDialog.addEventListener("click", onOverlay);
+    document.addEventListener("keydown", onKey);
+  });
+}
+
 function updateClock() {
   const now = new Date();
   elements.liveClock.textContent = new Intl.DateTimeFormat("id-ID", {
@@ -211,26 +277,189 @@ function formatTimestamp(value) {
   }).format(date);
 }
 
+// ============================================================
+// Records table: render, selection, pagination, delete
+// ============================================================
+
+function currentPage() {
+  return Math.floor(state.offset / PAGE_SIZE) + 1;
+}
+
+function totalPages() {
+  return Math.max(Math.ceil(state.total / PAGE_SIZE), 1);
+}
+
+function updateBulkBar() {
+  const count = state.selectedIds.size;
+  elements.bulkActionsBar.classList.toggle("hidden", count === 0);
+  elements.bulkSelectedCount.textContent = `${count} dipilih`;
+}
+
 function renderMeasurements() {
-  if (!state.measurements.length) {
-    elements.measurementRows.innerHTML = '<tr><td class="empty-state" colspan="22">Belum ada data pengukuran.</td></tr>';
-    return;
+  if (state.tableLoading) {
+    elements.measurementRows.innerHTML = '<tr><td class="empty-state" colspan="24">Memuat data...</td></tr>';
+  } else if (!state.measurements.length) {
+    const msg = state.search || state.labelFilter !== "__all__"
+      ? "Tidak ada data yang cocok dengan filter."
+      : "Belum ada data pengukuran.";
+    elements.measurementRows.innerHTML = `<tr><td class="empty-state" colspan="24">${msg}</td></tr>`;
+  } else {
+    elements.measurementRows.innerHTML = state.measurements.map((row) => `
+      <tr class="${state.selectedIds.has(row.id) ? "row-selected" : ""}" data-row-id="${row.id}">
+        <td class="col-check"><input type="checkbox" class="row-check" data-id="${row.id}" ${state.selectedIds.has(row.id) ? "checked" : ""} aria-label="Pilih baris ${escapeHtml(row.fruit_id)}"></td>
+        <td>${escapeHtml(formatTimestamp(row.timestamp))}</td>
+        <td class="fruit-code">${escapeHtml(row.fruit_id)}</td>
+        <td>#${String(row.scan_no).padStart(3, "0")}</td>
+        ${CHANNEL_KEYS.map((key) => `<td class="numeric">${Number(row[key] || 0).toFixed(4)}</td>`).join("")}
+        <td>
+          <select class="label-select" data-measurement-id="${row.id}" value="${escapeHtml(row.label)}" aria-label="Label ${escapeHtml(row.fruit_id)}">
+            <option value="" ${row.label === "" ? "selected" : ""}>Kosong</option>
+            <option value="bagus" ${row.label === "bagus" ? "selected" : ""}>Bagus</option>
+            <option value="rusak" ${row.label === "rusak" ? "selected" : ""}>Rusak</option>
+          </select>
+        </td>
+        <td class="col-actions">
+          <button class="row-delete-btn" type="button" data-id="${row.id}" data-fruit="${escapeHtml(row.fruit_id)}" title="Hapus baris ini" aria-label="Hapus baris ${escapeHtml(row.fruit_id)}">🗑️</button>
+        </td>
+      </tr>`).join("");
   }
 
-  elements.measurementRows.innerHTML = state.measurements.map((row) => `
-    <tr>
-      <td>${escapeHtml(formatTimestamp(row.timestamp))}</td>
-      <td class="fruit-code">${escapeHtml(row.fruit_id)}</td>
-      <td>#${String(row.scan_no).padStart(3, "0")}</td>
-      ${CHANNEL_KEYS.map((key) => `<td class="numeric">${Number(row[key] || 0).toFixed(4)}</td>`).join("")}
-      <td>
-        <select class="label-select" data-measurement-id="${row.id}" value="${escapeHtml(row.label)}" aria-label="Label ${escapeHtml(row.fruit_id)}">
-          <option value="" ${row.label === "" ? "selected" : ""}>Kosong</option>
-          <option value="bagus" ${row.label === "bagus" ? "selected" : ""}>Bagus</option>
-          <option value="rusak" ${row.label === "rusak" ? "selected" : ""}>Rusak</option>
-        </select>
-      </td>
-    </tr>`).join("");
+  elements.selectAllCheck.checked = state.measurements.length > 0 &&
+    state.measurements.every((row) => state.selectedIds.has(row.id));
+  elements.selectAllCheck.indeterminate = state.measurements.some((row) => state.selectedIds.has(row.id)) &&
+    !elements.selectAllCheck.checked;
+
+  updateBulkBar();
+
+  const shown = state.measurements.length;
+  const start = shown ? state.offset + 1 : 0;
+  const end = state.offset + shown;
+  elements.paginationInfo.textContent = state.total
+    ? `${start}–${end} dari ${state.total} data`
+    : "0 data";
+  elements.pageIndicator.textContent = `Hal. ${currentPage()} / ${totalPages()}`;
+  elements.prevPageBtn.disabled = state.offset <= 0;
+  elements.nextPageBtn.disabled = state.offset + PAGE_SIZE >= state.total;
+}
+
+async function fetchMeasurements() {
+  state.tableLoading = true;
+  renderMeasurements();
+  try {
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(state.offset) });
+    if (state.search) params.set("q", state.search);
+    if (state.labelFilter === "__empty__") params.set("label", "");
+    else if (state.labelFilter !== "__all__") params.set("label", state.labelFilter);
+
+    const payload = await api(`/api/measurements?${params.toString()}`);
+    state.measurements = payload.measurements;
+    state.total = payload.total ?? payload.measurements.length;
+    // Buang seleksi untuk baris yang sudah tidak ada di halaman ini/terhapus
+    const visibleIds = new Set(state.measurements.map((row) => row.id));
+    [...state.selectedIds].forEach((id) => { if (!visibleIds.has(id)) return; });
+  } catch (error) {
+    showToast(error.message, "error");
+    state.measurements = [];
+    state.total = 0;
+  } finally {
+    state.tableLoading = false;
+    renderMeasurements();
+  }
+}
+
+function goToPage(delta) {
+  const next = state.offset + delta * PAGE_SIZE;
+  if (next < 0 || next >= Math.max(state.total, 1)) return;
+  state.offset = next;
+  fetchMeasurements();
+}
+
+function toggleRowSelection(id, checked) {
+  if (checked) state.selectedIds.add(id);
+  else state.selectedIds.delete(id);
+  const rowEl = elements.measurementRows.querySelector(`tr[data-row-id="${id}"]`);
+  if (rowEl) rowEl.classList.toggle("row-selected", checked);
+  const checkboxEl = elements.measurementRows.querySelector(`.row-check[data-id="${id}"]`);
+  if (checkboxEl) checkboxEl.checked = checked;
+  elements.selectAllCheck.checked = state.measurements.length > 0 &&
+    state.measurements.every((row) => state.selectedIds.has(row.id));
+  elements.selectAllCheck.indeterminate = state.measurements.some((row) => state.selectedIds.has(row.id)) &&
+    !elements.selectAllCheck.checked;
+  updateBulkBar();
+}
+
+function toggleSelectAll(checked) {
+  state.measurements.forEach((row) => {
+    if (checked) state.selectedIds.add(row.id);
+    else state.selectedIds.delete(row.id);
+  });
+  renderMeasurements();
+}
+
+async function deleteSingleRow(id, fruitLabel) {
+  const ok = await showConfirm(
+    "Hapus data ini?",
+    `Baris ${fruitLabel} (ID #${id}) akan dihapus permanen dari database. Aksi ini tidak bisa dibatalkan.`,
+  );
+  if (!ok) return;
+
+  try {
+    const payload = await api(`/api/measurements/${id}`, { method: "DELETE" });
+    state.selectedIds.delete(id);
+    applySummary(payload.summary);
+    showToast("Data berhasil dihapus");
+    if (state.measurements.length === 1 && state.offset > 0) state.offset -= PAGE_SIZE;
+    await fetchMeasurements();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function deleteBulkRows() {
+  const ids = [...state.selectedIds];
+  if (!ids.length) return;
+  const ok = await showConfirm(
+    "Hapus data terpilih?",
+    `${ids.length} baris akan dihapus permanen dari database. Aksi ini tidak bisa dibatalkan.`,
+  );
+  if (!ok) return;
+
+  try {
+    const payload = await api("/api/measurements/bulk-delete", {
+      method: "POST", body: JSON.stringify({ ids }),
+    });
+    state.selectedIds.clear();
+    applySummary(payload.summary);
+    showToast(`${payload.deleted_count} data berhasil dihapus`);
+    if (state.offset > 0 && ids.length >= state.measurements.length) state.offset -= PAGE_SIZE;
+    await fetchMeasurements();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function resetDatabase() {
+  const ok = await showConfirm(
+    "Reset seluruh database?",
+    `SEMUA ${state.total} data pengukuran akan dihapus permanen -- termasuk yang tidak terlihat di halaman/filter saat ini. Nomor scan akan mulai lagi dari 1. Aksi ini tidak bisa dibatalkan.`,
+    "Ya, Reset Semua",
+  );
+  if (!ok) return;
+
+  try {
+    const payload = await api("/api/measurements", { method: "DELETE" });
+    state.selectedIds.clear();
+    state.offset = 0;
+    state.search = "";
+    elements.searchInput.value = "";
+    state.labelFilter = "__all__";
+    elements.labelFilter.value = "__all__";
+    applySummary(payload.summary);
+    showToast(`Database direset · ${payload.deleted_count} data dihapus`);
+    await fetchMeasurements();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
 }
 
 async function loadPorts() {
@@ -246,13 +475,10 @@ async function loadPorts() {
 
 async function loadInitialData() {
   try {
-    const [statusPayload, measurementPayload] = await Promise.all([
-      api("/api/status"), api("/api/measurements?limit=250"), loadPorts(),
-    ]);
+    const [statusPayload] = await Promise.all([api("/api/status"), loadPorts()]);
     applyDeviceStatus(statusPayload.device);
     applySummary(statusPayload.summary);
-    state.measurements = measurementPayload.measurements;
-    renderMeasurements();
+    await fetchMeasurements();
     if (state.measurements[0]) updateSpectrum(state.measurements[0]);
     fetchDebugLogs();
   } catch (error) {
@@ -288,42 +514,80 @@ async function toggleConnection() {
   }
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function scan() {
   state.scanning = true;
   hideErrorInspector();
   elements.scanButton.classList.add("loading");
-  elements.scanButtonText.textContent = "Sedang memindai...";
   elements.lastStatus.textContent = "Memindai";
   elements.lastStatusDetail.textContent = "Tunggu bunyi buzzer dan pembacaan 18 kanal AS7265x";
   updateScanAvailability();
 
-  try {
-    const payload = await api("/api/scan", {
-      method: "POST", body: JSON.stringify({ fruit_id: elements.fruitId.value.trim() }),
-    });
-    state.measurements.unshift(payload.measurement);
-    renderMeasurements();
-    updateSpectrum(payload.measurement);
-    applySummary(payload.summary);
-    elements.lastStatus.textContent = "Berhasil";
-    elements.lastStatusDetail.textContent = `Scan #${payload.measurement.scan_no} tersimpan · baru saja`;
-    showToast(`Data ${payload.measurement.fruit_id} (#${payload.measurement.scan_no}) berhasil disimpan`);
-  } catch (error) {
-    elements.lastStatus.textContent = "Gagal";
-    elements.lastStatusDetail.textContent = error.message;
-    showErrorInspector("Scan Spektrum Gagal", error);
-    showToast(error.message, "error");
-  } finally {
-    state.scanning = false;
-    elements.scanButton.classList.remove("loading");
-    elements.scanButtonText.textContent = "Ambil satu scan";
-    updateScanAvailability();
-    fetchDebugLogs();
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= SCAN_AUTO_RETRY_LIMIT; attempt++) {
+    if (attempt === 0) {
+      elements.scanButtonText.textContent = "Sedang memindai...";
+    } else {
+      // Server sendiri sudah retry internal 3x sebelum menyerah -- kalau
+      // sampai di sini berarti itu pun gagal semua. Beri jeda sedikit lagi
+      // supaya tidak langsung menabrak gangguan yang sama, lalu coba lagi
+      // dari awal secara utuh (bukan cuma internal server).
+      elements.scanButtonText.textContent = `Gagal, mencoba ulang otomatis (${attempt}/${SCAN_AUTO_RETRY_LIMIT})...`;
+      elements.lastStatusDetail.textContent = "Percobaan sebelumnya gagal (kemungkinan noise sesaat) -- mencoba ulang otomatis...";
+      showToast("Scan gagal, mencoba ulang otomatis...", "error");
+      await wait(1000);
+    }
+
+    // Server sendiri diam-diam bisa retry sampai 3x kalau ada gangguan --
+    // dari sisi browser itu keliatan cuma satu request yang lama. Kasih
+    // kabar setelah beberapa detik supaya tidak terasa "macet" walau
+    // sebenarnya lagi bekerja di baliknya.
+    const slowNoticeTimer = setTimeout(() => {
+      elements.lastStatusDetail.textContent = "Masih mencoba di balik layar (server otomatis mengulang kalau ada gangguan sinyal) -- mohon tunggu...";
+    }, 9000);
+
+    try {
+      const payload = await api("/api/scan", {
+        method: "POST", body: JSON.stringify({ fruit_id: elements.fruitId.value.trim() }),
+      });
+      updateSpectrum(payload.measurement);
+      applySummary(payload.summary);
+      elements.lastStatus.textContent = "Berhasil";
+      elements.lastStatusDetail.textContent = `Scan #${payload.measurement.scan_no} tersimpan · baru saja`;
+      showToast(`Data ${payload.measurement.fruit_id} (#${payload.measurement.scan_no}) berhasil disimpan`);
+      // Scan baru selalu muncul di halaman pertama (urutan terbaru dulu).
+      state.offset = 0;
+      await fetchMeasurements();
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(slowNoticeTimer);
+    }
   }
+
+  if (lastError) {
+    elements.lastStatus.textContent = "Gagal";
+    elements.lastStatusDetail.textContent = lastError.message;
+    showErrorInspector("Scan Spektrum Gagal", lastError);
+    showToast(lastError.message, "error");
+  }
+
+  state.scanning = false;
+  elements.scanButton.classList.remove("loading");
+  elements.scanButtonText.textContent = "Ambil satu scan";
+  updateScanAvailability();
+  fetchDebugLogs();
 }
 
 async function updateLabel(select) {
   const previous = state.measurements.find((row) => row.id === Number(select.dataset.measurementId));
+  const prevValue = previous ? previous.label : "";
   try {
     const payload = await api(`/api/measurements/${select.dataset.measurementId}/label`, {
       method: "PATCH", body: JSON.stringify({ label: select.value }),
@@ -333,7 +597,7 @@ async function updateLabel(select) {
     applySummary(payload.summary);
     showToast("Label diperbarui");
   } catch (error) {
-    if (previous) select.value = previous.label;
+    select.value = prevValue;
     showToast(error.message, "error");
   }
 }
@@ -461,11 +725,48 @@ elements.fruitId.addEventListener("input", () => {
   elements.fruitId.value = elements.fruitId.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "");
   updateScanAvailability();
 });
+
 elements.measurementRows.addEventListener("change", (event) => {
   if (event.target.matches(".label-select")) updateLabel(event.target);
+  if (event.target.matches(".row-check")) {
+    toggleRowSelection(Number(event.target.dataset.id), event.target.checked);
+  }
+});
+elements.measurementRows.addEventListener("click", (event) => {
+  const btn = event.target.closest(".row-delete-btn");
+  if (btn) deleteSingleRow(Number(btn.dataset.id), btn.dataset.fruit);
 });
 
+elements.selectAllCheck.addEventListener("change", (event) => toggleSelectAll(event.target.checked));
+elements.bulkDeleteBtn.addEventListener("click", deleteBulkRows);
+elements.bulkClearBtn.addEventListener("click", () => {
+  state.selectedIds.clear();
+  renderMeasurements();
+});
+
+elements.searchInput.addEventListener("input", () => {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    state.search = elements.searchInput.value.trim();
+    state.offset = 0;
+    fetchMeasurements();
+  }, 350);
+});
+elements.labelFilter.addEventListener("change", () => {
+  state.labelFilter = elements.labelFilter.value;
+  state.offset = 0;
+  fetchMeasurements();
+});
+elements.prevPageBtn.addEventListener("click", () => goToPage(-1));
+elements.nextPageBtn.addEventListener("click", () => goToPage(1));
+elements.resetDbBtn.addEventListener("click", resetDatabase);
+
 // Error Inspector Actions
+elements.retryScanBtn.addEventListener("click", () => {
+  if (state.scanning) return;
+  hideErrorInspector();
+  scan();
+});
 elements.copyErrorBtn.addEventListener("click", copyErrorDetails);
 elements.viewInConsoleBtn.addEventListener("click", () => {
   hideErrorInspector();

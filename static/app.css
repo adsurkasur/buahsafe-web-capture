@@ -86,6 +86,9 @@ h2 { margin: 3px 0 0; font-size: 18px; }
 .copy-btn:hover { background: #962a1c; transform: translateY(-1px); }
 .secondary-btn { background: white; color: #5c1810; border: 1px solid var(--danger-border); }
 .secondary-btn:hover { background: #fee2e2; }
+.retry-btn { background: var(--green); color: white; }
+.retry-btn:hover { background: #1c513e; transform: translateY(-1px); }
+.retry-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 /* ============================================================
    Workspace Panels
@@ -136,16 +139,64 @@ h2 { margin: 3px 0 0; font-size: 18px; }
 .export-button { padding: 10px 13px; border-radius: 10px; background: var(--green); color: white; font-size: 10px; font-weight: 800; text-decoration: none; transition: 150ms ease; }
 .export-button:hover { background: #1c513e; transform: translateY(-1px); }
 .export-button span { color: var(--acid); }
+.records-header-actions { display: flex; align-items: center; gap: 10px; }
+.reset-db-btn { padding: 10px 13px; border: 1px solid var(--danger); border-radius: 10px; background: none; color: var(--danger); font-size: 10px; font-weight: 800; cursor: pointer; transition: 150ms ease; }
+.reset-db-btn:hover { background: var(--danger); color: white; transform: translateY(-1px); }
+
+/* ============================================================
+   Records toolbar: search, filter, bulk actions
+   ============================================================ */
+.records-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 23px 16px; flex-wrap: wrap; }
+.toolbar-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.search-wrap input { padding: 9px 13px; border: 1px solid var(--line); border-radius: 10px; outline: 0; background: var(--paper); color: var(--ink); font-size: 12px; min-width: 200px; transition: 130ms ease; }
+.search-wrap input:focus { border-color: var(--green); background: white; }
+.filter-select { padding: 9px 13px; border: 1px solid var(--line); border-radius: 10px; outline: 0; background: var(--paper); color: var(--ink); font-size: 12px; }
+.bulk-actions { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; border-radius: 999px; background: var(--green-soft); border: 1px solid #cfe4d8; animation: slideDown 160ms ease; }
+.bulk-actions.hidden { display: none; }
+.bulk-actions span { font-size: 11px; font-weight: 800; color: var(--green); white-space: nowrap; }
+.bulk-delete-btn { padding: 7px 12px; border: 0; border-radius: 999px; background: var(--danger); color: white; font-size: 11px; font-weight: 700; cursor: pointer; transition: 130ms ease; }
+.bulk-delete-btn:hover { background: #962a1c; }
+.bulk-clear-btn { padding: 7px 10px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; }
+.bulk-clear-btn:hover { color: var(--ink); }
+
 .table-scroll { overflow: auto; }
-table { width: 100%; min-width: 1380px; border-collapse: collapse; }
+table { width: 100%; min-width: 1460px; border-collapse: collapse; }
 th, td { padding: 10px 11px; border-top: 1px solid #edf0ed; text-align: left; font-size: 10px; white-space: nowrap; }
 th { background: #fafbfa; color: var(--muted); font-size: 8px; letter-spacing: 0.11em; text-transform: uppercase; position: sticky; top: 0; }
 td.numeric { font-family: ui-monospace, Consolas, monospace; }
 td.fruit-code { font-weight: 800; }
+.col-check, .col-actions { width: 38px; text-align: center; }
+tr.row-selected { background: var(--green-soft); }
+.row-delete-btn { border: 0; background: none; padding: 5px 7px; border-radius: 7px; cursor: pointer; font-size: 12px; opacity: 0.65; transition: 130ms ease; }
+.row-delete-btn:hover { opacity: 1; background: var(--danger-bg); }
 .label-select { padding: 5px 7px; border: 1px solid var(--line); border-radius: 999px; outline: 0; background: #fff4eb; color: #9f4a1f; font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .label-select[value="bagus"] { background: #e8f6eb; color: #24693a; }
 .label-select[value="rusak"] { background: #fbe9e6; color: #a23b2d; }
 .empty-state { padding: 42px; color: var(--muted); text-align: center; }
+
+/* ============================================================
+   Pagination
+   ============================================================ */
+.table-pagination { display: flex; align-items: center; justify-content: space-between; padding: 14px 23px; border-top: 1px solid #edf0ed; font-size: 11px; color: var(--muted); }
+.pagination-controls { display: flex; align-items: center; gap: 10px; }
+.page-btn { padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--ink); font-size: 11px; font-weight: 700; cursor: pointer; transition: 130ms ease; }
+.page-btn:hover:not(:disabled) { background: #f0f4f1; border-color: var(--muted); }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+#pageIndicator { font-family: ui-monospace, Consolas, monospace; font-weight: 700; color: var(--ink); }
+
+/* ============================================================
+   Confirm Dialog (pengganti window.confirm)
+   ============================================================ */
+.confirm-overlay { position: fixed; inset: 0; z-index: 140; background: rgba(10, 18, 14, 0.45); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.confirm-overlay.hidden { display: none; }
+.confirm-card { width: 100%; max-width: 360px; background: white; border-radius: 18px; padding: 22px; box-shadow: 0 25px 60px rgba(0,0,0,0.25); animation: popIn 160ms ease; }
+.confirm-card strong { display: block; font-size: 15px; color: var(--ink); }
+.confirm-card p { margin: 8px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.confirm-cancel-btn { padding: 9px 15px; border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--ink); font-size: 12px; font-weight: 700; cursor: pointer; }
+.confirm-cancel-btn:hover { background: #f0f4f1; }
+.confirm-ok-btn { padding: 9px 15px; border: 0; border-radius: 9px; background: var(--danger); color: white; font-size: 12px; font-weight: 700; cursor: pointer; }
+.confirm-ok-btn:hover { background: #962a1c; }
 
 /* ============================================================
    Debug Console Modal & Log Viewer

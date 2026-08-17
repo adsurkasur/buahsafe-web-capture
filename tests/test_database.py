@@ -120,7 +120,9 @@ class TestDatabase(unittest.TestCase):
         }
         inserted = database.insert_measurement("JAMBU_001", reading)
         self.assertEqual(inserted["fruit_id"], "JAMBU_001")
-        self.assertEqual(inserted["scan_no"], 5)
+        # scan_no diselaraskan dengan id baris di DB (bukan reading["scan_no"]
+        # mentah dari ESP32) -- lihat insert_measurement().
+        self.assertEqual(inserted["scan_no"], inserted["id"])
         self.assertEqual(inserted["label"], "")
         self.assertAlmostEqual(inserted["nm410"], 1.0)
         self.assertAlmostEqual(inserted["nm940"], 18.0)
@@ -136,6 +138,121 @@ class TestDatabase(unittest.TestCase):
         self.assertIsNotNone(updated)
         self.assertEqual(updated["label"], "bagus")
         self.assertEqual(database.summary()["unlabeled"], 0)
+
+    def _sample_reading(self, scan_no: int) -> dict:
+        reading = {"scan_no": scan_no}
+        for i, key in enumerate(CHANNEL_KEYS):
+            reading[key] = float(i + 1)
+        return reading
+
+    def test_delete_measurement(self):
+        database.initialize()
+        inserted = database.insert_measurement("JAMBU_DEL", self._sample_reading(1))
+
+        self.assertTrue(database.delete_measurement(inserted["id"]))
+        self.assertEqual(database.summary()["total_scans"], 0)
+        # Deleting again returns False (already gone)
+        self.assertFalse(database.delete_measurement(inserted["id"]))
+        # Deleting a nonexistent id returns False
+        self.assertFalse(database.delete_measurement(99999))
+
+    def test_delete_measurements_bulk(self):
+        database.initialize()
+        ids = [
+            database.insert_measurement("JAMBU_BULK", self._sample_reading(i))["id"]
+            for i in range(1, 4)
+        ]
+
+        deleted_count = database.delete_measurements(ids[:2])
+        self.assertEqual(deleted_count, 2)
+        self.assertEqual(database.summary()["total_scans"], 1)
+        self.assertEqual(database.delete_measurements([]), 0)
+
+    def test_list_measurements_search_and_label_filter(self):
+        database.initialize()
+        a = database.insert_measurement("JAMBU_A", self._sample_reading(1))
+        b = database.insert_measurement("JAMBU_B", self._sample_reading(1))
+        database.update_label(a["id"], "bagus")
+        database.update_label(b["id"], "rusak")
+
+        by_search = database.list_measurements(search="JAMBU_A")
+        self.assertEqual([row["fruit_id"] for row in by_search], ["JAMBU_A"])
+
+        by_label = database.list_measurements(label="rusak")
+        self.assertEqual([row["fruit_id"] for row in by_label], ["JAMBU_B"])
+
+        self.assertEqual(database.count_measurements(search="JAMBU_A"), 1)
+        self.assertEqual(database.count_measurements(label="bagus"), 1)
+        self.assertEqual(database.count_measurements(), 2)
+
+    def test_scan_no_ignores_device_reported_value_and_tracks_db_id(self):
+        database.initialize()
+        # ESP32 kadang reboot dan scan_no-nya reset/tidak sinkron (mis. lapor
+        # "5" padahal ini row pertama, atau lapor angka yang sama berulang
+        # kali). Database HARUS mengabaikan nilai mentah ini dan pakai id-nya
+        # sendiri supaya selalu unik & berurutan.
+        reading_a = self._sample_reading(999)
+        reading_a["scan_no"] = 999
+        inserted_a = database.insert_measurement("JAMBU_A", reading_a)
+        self.assertEqual(inserted_a["scan_no"], inserted_a["id"])
+
+        reading_b = self._sample_reading(1)
+        reading_b["scan_no"] = 1  # firmware "reboot", counter reset ke 1 lagi
+        inserted_b = database.insert_measurement("JAMBU_B", reading_b)
+        self.assertEqual(inserted_b["scan_no"], inserted_b["id"])
+        self.assertNotEqual(inserted_a["scan_no"], inserted_b["scan_no"])
+        self.assertGreater(inserted_b["scan_no"], inserted_a["scan_no"])
+
+    def test_scan_no_never_reused_after_delete(self):
+        database.initialize()
+        ids = [
+            database.insert_measurement(f"JAMBU_{i}", self._sample_reading(i))["id"]
+            for i in range(1, 4)
+        ]
+        # Hapus baris dengan scan_no TERBESAR (paling rawan menyebabkan
+        # nomor didaur ulang kalau logikanya naif, mis. pakai MAX()+1).
+        database.delete_measurement(ids[-1])
+
+        new_row = database.insert_measurement("JAMBU_NEW", self._sample_reading(1))
+        # id/scan_no baru harus tetap lebih besar dari yang pernah ada,
+        # bukan mengisi ulang nomor yang baru dihapus.
+        self.assertGreater(new_row["scan_no"], max(ids))
+
+    def test_reset_all_measurements(self):
+        database.initialize()
+        for i in range(1, 4):
+            database.insert_measurement(f"JAMBU_{i}", self._sample_reading(i))
+        self.assertEqual(database.summary()["total_scans"], 3)
+
+        deleted = database.reset_all_measurements()
+        self.assertEqual(deleted, 3)
+        self.assertEqual(database.summary(), {"total_scans": 0, "total_fruits": 0, "unlabeled": 0})
+        self.assertEqual(database.all_measurements(), [])
+
+        # Setelah reset, penomoran harus mulai dari 1 lagi (bukan lanjut
+        # dari id/scan_no terakhir sebelum reset).
+        fresh = database.insert_measurement("JAMBU_NEW", self._sample_reading(1))
+        self.assertEqual(fresh["id"], 1)
+        self.assertEqual(fresh["scan_no"], 1)
+
+    def test_reset_all_measurements_on_empty_database(self):
+        database.initialize()
+        # Tidak boleh error meski belum pernah ada insert sama sekali
+        # (tabel sqlite_sequence belum tentu ada).
+        deleted = database.reset_all_measurements()
+        self.assertEqual(deleted, 0)
+
+    def test_list_measurements_pagination(self):
+        database.initialize()
+        for i in range(1, 6):
+            database.insert_measurement(f"JAMBU_P{i}", self._sample_reading(i))
+
+        page1 = database.list_measurements(limit=2, offset=0)
+        page2 = database.list_measurements(limit=2, offset=2)
+        self.assertEqual(len(page1), 2)
+        self.assertEqual(len(page2), 2)
+        self.assertNotEqual([r["id"] for r in page1], [r["id"] for r in page2])
+        self.assertEqual(database.count_measurements(), 5)
 
 
 if __name__ == "__main__":

@@ -80,6 +80,9 @@
           </div>
 
           <div class="error-inspector-footer">
+            <button id="retryScanBtn" class="action-btn retry-btn" type="button">
+              🔄 Coba Scan Lagi
+            </button>
             <button id="copyErrorBtn" class="action-btn copy-btn" type="button">
               📋 Salin Detail Error
             </button>
@@ -131,12 +134,37 @@
       <section id="records" class="panel records-panel">
         <header class="records-header">
           <div><span class="field-label">Data mentah</span><h2>Riwayat pengukuran (18 kanal)</h2></div>
-          <a class="export-button" href="/export.csv">Unduh CSV <span>↘</span></a>
+          <div class="records-header-actions">
+            <a class="export-button" href="/export.csv">Unduh CSV <span>↘</span></a>
+            <button id="resetDbBtn" class="reset-db-btn" type="button" title="Hapus SEMUA data pengukuran">🗑️ Reset Database</button>
+          </div>
         </header>
+
+        <div class="records-toolbar">
+          <div class="toolbar-filters">
+            <div class="search-wrap">
+              <input id="searchInput" type="search" placeholder="Cari ID jambu..." aria-label="Cari ID jambu">
+            </div>
+            <label class="sr-only" for="labelFilter">Filter label</label>
+            <select id="labelFilter" class="filter-select" aria-label="Filter label">
+              <option value="__all__">Semua label</option>
+              <option value="__empty__">Belum dilabeli</option>
+              <option value="bagus">Bagus</option>
+              <option value="rusak">Rusak</option>
+            </select>
+          </div>
+          <div id="bulkActionsBar" class="bulk-actions hidden">
+            <span id="bulkSelectedCount">0 dipilih</span>
+            <button id="bulkDeleteBtn" class="bulk-delete-btn" type="button">🗑️ Hapus terpilih</button>
+            <button id="bulkClearBtn" class="bulk-clear-btn" type="button">Batal pilih</button>
+          </div>
+        </div>
+
         <div class="table-scroll">
           <table>
             <thead>
               <tr>
+                <th class="col-check"><input type="checkbox" id="selectAllCheck" aria-label="Pilih semua baris"></th>
                 <th>Waktu</th>
                 <th>ID jambu</th>
                 <th>Scan</th>
@@ -159,16 +187,38 @@
                 <th>900</th>
                 <th>940</th>
                 <th>Label</th>
+                <th class="col-actions">Aksi</th>
               </tr>
             </thead>
             <tbody id="measurementRows">
-              <tr><td class="empty-state" colspan="22">Belum ada data pengukuran.</td></tr>
+              <tr><td class="empty-state" colspan="24">Memuat data...</td></tr>
             </tbody>
           </table>
         </div>
+
+        <footer class="table-pagination">
+          <span id="paginationInfo">0 data</span>
+          <div class="pagination-controls">
+            <button id="prevPageBtn" class="page-btn" type="button" disabled>‹ Sebelumnya</button>
+            <span id="pageIndicator">Hal. 1</span>
+            <button id="nextPageBtn" class="page-btn" type="button" disabled>Berikutnya ›</button>
+          </div>
+        </footer>
       </section>
     </main>
   </div>
+
+  <!-- Confirm Dialog (dipakai untuk aksi hapus, bukan window.confirm) -->
+  <aside id="confirmDialog" class="confirm-overlay hidden" aria-modal="true" role="dialog">
+    <div class="confirm-card">
+      <strong id="confirmTitle">Hapus data?</strong>
+      <p id="confirmMessage">Aksi ini tidak bisa dibatalkan.</p>
+      <div class="confirm-actions">
+        <button id="confirmCancelBtn" class="confirm-cancel-btn" type="button">Batal</button>
+        <button id="confirmOkBtn" class="confirm-ok-btn" type="button">Hapus</button>
+      </div>
+    </div>
+  </aside>
 
   <!-- Full Debug Console Modal -->
   <aside id="debugModal" class="debug-modal hidden" aria-modal="true" role="dialog">

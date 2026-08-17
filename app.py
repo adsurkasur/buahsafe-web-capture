@@ -54,6 +54,12 @@ def index() -> str:
     return render_template("index.html")
 
 
+@app.get("/favicon.ico")
+def favicon():
+    # Browser otomatis minta ini; jawab kosong supaya tidak membanjiri log/404 handler.
+    return "", 204
+
+
 @app.get("/api/status")
 def api_status():
     return jsonify({
@@ -106,6 +112,10 @@ def api_scan():
         "DATABASE",
         f"Record tersimpan ID={measurement['id']} (Buah={fruit_id}, Scan #{measurement['scan_no']})",
     )
+    # Beri tahu firmware scan_no yang SAH (dari database) supaya LCD sinkron.
+    # Best-effort: kegagalan di sini tidak boleh menggagalkan response API,
+    # data sudah aman tersimpan di database terlepas dari ini.
+    device.notify_saved(measurement["scan_no"])
     return jsonify({
         "measurement": measurement,
         "summary": database.summary(),
@@ -119,7 +129,61 @@ def api_measurements():
         limit = int(request.args.get("limit", 250))
     except ValueError:
         limit = 250
-    return jsonify({"measurements": database.list_measurements(limit)})
+    try:
+        offset = int(request.args.get("offset", 0))
+    except ValueError:
+        offset = 0
+    search = str(request.args.get("q", "")).strip()
+    label = str(request.args.get("label", "")).strip().lower()
+    if label not in VALID_LABELS:
+        label = ""
+
+    measurements = database.list_measurements(limit, offset, search, label)
+    total = database.count_measurements(search, label)
+    return jsonify({
+        "measurements": measurements,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    })
+
+
+@app.delete("/api/measurements/<int:measurement_id>")
+def api_delete_measurement(measurement_id: int):
+    deleted = database.delete_measurement(measurement_id)
+    if not deleted:
+        return jsonify({"error": "Data tidak ditemukan"}), 404
+    debug_logger.add("INFO", "DATABASE", f"Record dihapus ID={measurement_id}")
+    return jsonify({"deleted_id": measurement_id, "summary": database.summary()})
+
+
+@app.post("/api/measurements/bulk-delete")
+def api_bulk_delete_measurements():
+    payload = request.get_json(silent=True) or {}
+    ids = payload.get("ids", [])
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "Pilih minimal satu data untuk dihapus"}), 400
+    try:
+        clean_ids = [int(i) for i in ids]
+    except (TypeError, ValueError):
+        return jsonify({"error": "Daftar ID tidak valid"}), 400
+
+    deleted_count = database.delete_measurements(clean_ids)
+    debug_logger.add(
+        "INFO", "DATABASE",
+        f"Bulk delete: {deleted_count} record dihapus (diminta {len(clean_ids)})",
+    )
+    return jsonify({"deleted_count": deleted_count, "summary": database.summary()})
+
+
+@app.delete("/api/measurements")
+def api_reset_measurements():
+    deleted_count = database.reset_all_measurements()
+    debug_logger.add(
+        "WARN", "DATABASE",
+        f"RESET DATABASE: {deleted_count} record dihapus (seluruh data, counter direset)",
+    )
+    return jsonify({"deleted_count": deleted_count, "summary": database.summary()})
 
 
 @app.patch("/api/measurements/<int:measurement_id>/label")
@@ -180,6 +244,15 @@ def api_debug_logs():
 def api_debug_clear():
     debug_logger.clear()
     return jsonify({"status": "cleared", "logs": []})
+
+
+@app.errorhandler(404)
+def handle_not_found(error):
+    # Permintaan seperti /favicon.ico dari browser itu normal, bukan bug -- jangan
+    # dicatat sebagai ERROR di debug console supaya log tidak bising/menyesatkan.
+    if request.path != "/favicon.ico":
+        debug_logger.add("WARN", "API", f"404 pada {request.method} {request.path}")
+    return jsonify({"error": "Halaman atau endpoint tidak ditemukan"}), 404
 
 
 @app.errorhandler(DeviceError)
