@@ -9,6 +9,7 @@ import platform
 import re
 import sys
 import traceback
+from typing import Any
 
 from flask import Flask, Response, jsonify, render_template, request
 
@@ -34,6 +35,9 @@ app = Flask(__name__)
 device = BuahSafeDevice()
 FRUIT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,30}$")
 VALID_LABELS = {"", "normal", "anomali"}
+VALID_ROTASI = {"", "A", "B", "C", "D"}
+MAX_DIAMETER_CM = 50.0
+MAX_ELEVASI_CM = 100.0
 
 database.initialize()
 atexit.register(device.disconnect)
@@ -200,6 +204,62 @@ def api_update_label(measurement_id: int):
     return jsonify({"measurement": measurement, "summary": database.summary()})
 
 
+def _parse_manual_measurement(raw: Any, field_label: str, max_value: float) -> tuple[float | None, str | None]:
+    """Parse input angka manual (diameter/elevasi) dari operator.
+
+    Nilai kosong ("" atau None) berarti belum diukur -> dikembalikan sebagai
+    None (bukan error). Selain itu harus berupa angka positif yang masuk akal
+    (0 < x <= max_value) supaya salah ketik tidak lolos ke dataset.
+    """
+    if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+        return None, None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None, f"{field_label} harus berupa angka"
+    if value <= 0 or value > max_value:
+        return None, f"{field_label} harus antara 0 dan {max_value:g} cm"
+    return value, None
+
+
+@app.patch("/api/measurements/<int:measurement_id>/diameter")
+def api_update_diameter(measurement_id: int):
+    payload = request.get_json(silent=True) or {}
+    value, error = _parse_manual_measurement(payload.get("diameter_cm"), "Diameter", MAX_DIAMETER_CM)
+    if error:
+        debug_logger.add("WARN", "API", f"Update diameter gagal: {error}")
+        return jsonify({"error": error}), 400
+    measurement = database.update_diameter(measurement_id, value)
+    if measurement is None:
+        return jsonify({"error": "Data tidak ditemukan"}), 404
+    return jsonify({"measurement": measurement, "summary": database.summary()})
+
+
+@app.patch("/api/measurements/<int:measurement_id>/rotasi")
+def api_update_rotasi(measurement_id: int):
+    payload = request.get_json(silent=True) or {}
+    rotasi = str(payload.get("rotasi", "")).strip().upper()
+    if rotasi not in VALID_ROTASI:
+        return jsonify({"error": "Rotasi harus kosong, A, B, C, atau D"}), 400
+    measurement = database.update_rotasi(measurement_id, rotasi)
+    if measurement is None:
+        return jsonify({"error": "Data tidak ditemukan"}), 404
+    return jsonify({"measurement": measurement, "summary": database.summary()})
+
+
+@app.patch("/api/measurements/<int:measurement_id>/elevasi")
+def api_update_elevasi(measurement_id: int):
+    payload = request.get_json(silent=True) or {}
+    value, error = _parse_manual_measurement(payload.get("elevasi_cm"), "Elevasi", MAX_ELEVASI_CM)
+    if error:
+        debug_logger.add("WARN", "API", f"Update elevasi gagal: {error}")
+        return jsonify({"error": error}), 400
+    measurement = database.update_elevasi(measurement_id, value)
+    if measurement is None:
+        return jsonify({"error": "Data tidak ditemukan"}), 404
+    return jsonify({"measurement": measurement, "summary": database.summary()})
+
+
 @app.get("/export.csv")
 def export_csv():
     rows = database.all_measurements()
@@ -210,6 +270,9 @@ def export_csv():
         "scan_no",
         *CHANNEL_KEYS,
         "label",
+        "diameter_cm",
+        "rotasi",
+        "elevasi_cm",
     ]
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()

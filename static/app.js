@@ -338,12 +338,12 @@ function updateBulkBar() {
 
 function renderMeasurements() {
   if (state.tableLoading) {
-    elements.measurementRows.innerHTML = '<tr><td class="empty-state" colspan="24">Memuat data...</td></tr>';
+    elements.measurementRows.innerHTML = '<tr><td class="empty-state" colspan="27">Memuat data...</td></tr>';
   } else if (!state.measurements.length) {
     const msg = state.search || state.labelFilter !== "__all__"
       ? "Tidak ada data yang cocok dengan filter."
       : "Belum ada data pengukuran.";
-    elements.measurementRows.innerHTML = `<tr><td class="empty-state" colspan="24">${msg}</td></tr>`;
+    elements.measurementRows.innerHTML = `<tr><td class="empty-state" colspan="27">${msg}</td></tr>`;
   } else {
     elements.measurementRows.innerHTML = state.measurements.map((row) => `
       <tr class="${state.selectedIds.has(row.id) ? "row-selected" : ""}" data-row-id="${row.id}">
@@ -358,6 +358,21 @@ function renderMeasurements() {
             <option value="normal" ${row.label === "normal" ? "selected" : ""}>Normal</option>
             <option value="anomali" ${row.label === "anomali" ? "selected" : ""}>Anomali</option>
           </select>
+        </td>
+        <td>
+          <input type="number" class="diameter-input" data-measurement-id="${row.id}" value="${row.diameter_cm ?? ""}" step="0.1" min="0" max="50" placeholder="—" aria-label="Diameter ${escapeHtml(row.fruit_id)} (cm)">
+        </td>
+        <td>
+          <select class="rotasi-select" data-measurement-id="${row.id}" aria-label="Rotasi ${escapeHtml(row.fruit_id)}">
+            <option value="" ${!row.rotasi ? "selected" : ""}>—</option>
+            <option value="A" ${row.rotasi === "A" ? "selected" : ""}>A</option>
+            <option value="B" ${row.rotasi === "B" ? "selected" : ""}>B</option>
+            <option value="C" ${row.rotasi === "C" ? "selected" : ""}>C</option>
+            <option value="D" ${row.rotasi === "D" ? "selected" : ""}>D</option>
+          </select>
+        </td>
+        <td>
+          <input type="number" class="elevasi-input" data-measurement-id="${row.id}" value="${row.elevasi_cm ?? ""}" step="0.1" min="0" max="100" placeholder="—" aria-label="Elevasi ${escapeHtml(row.fruit_id)} (cm)">
         </td>
         <td class="col-actions">
           <button class="row-delete-btn" type="button" data-id="${row.id}" data-fruit="${escapeHtml(row.fruit_id)}" title="Hapus baris ini" aria-label="Hapus baris ${escapeHtml(row.fruit_id)}">🗑️</button>
@@ -656,6 +671,51 @@ async function updateLabel(select) {
   }
 }
 
+async function updateRotasi(select) {
+  const previous = state.measurements.find((row) => row.id === Number(select.dataset.measurementId));
+  const prevValue = previous ? previous.rotasi || "" : "";
+  try {
+    const payload = await api(`/api/measurements/${select.dataset.measurementId}/rotasi`, {
+      method: "PATCH", body: JSON.stringify({ rotasi: select.value }),
+    });
+    if (previous) Object.assign(previous, payload.measurement);
+    showToast("Rotasi diperbarui");
+  } catch (error) {
+    select.value = prevValue;
+    showToast(error.message, "error");
+  }
+}
+
+async function updateDiameter(input) {
+  const previous = state.measurements.find((row) => row.id === Number(input.dataset.measurementId));
+  const prevValue = previous && previous.diameter_cm != null ? previous.diameter_cm : "";
+  try {
+    const payload = await api(`/api/measurements/${input.dataset.measurementId}/diameter`, {
+      method: "PATCH", body: JSON.stringify({ diameter_cm: input.value.trim() }),
+    });
+    if (previous) Object.assign(previous, payload.measurement);
+    showToast("Diameter diperbarui");
+  } catch (error) {
+    input.value = prevValue;
+    showToast(error.message, "error");
+  }
+}
+
+async function updateElevasi(input) {
+  const previous = state.measurements.find((row) => row.id === Number(input.dataset.measurementId));
+  const prevValue = previous && previous.elevasi_cm != null ? previous.elevasi_cm : "";
+  try {
+    const payload = await api(`/api/measurements/${input.dataset.measurementId}/elevasi`, {
+      method: "PATCH", body: JSON.stringify({ elevasi_cm: input.value.trim() }),
+    });
+    if (previous) Object.assign(previous, payload.measurement);
+    showToast("Elevasi diperbarui");
+  } catch (error) {
+    input.value = prevValue;
+    showToast(error.message, "error");
+  }
+}
+
 // ============================================================
 // Debug Console Management
 // ============================================================
@@ -782,6 +842,9 @@ elements.fruitId.addEventListener("input", () => {
 
 elements.measurementRows.addEventListener("change", (event) => {
   if (event.target.matches(".label-select")) updateLabel(event.target);
+  if (event.target.matches(".rotasi-select")) updateRotasi(event.target);
+  if (event.target.matches(".diameter-input")) updateDiameter(event.target);
+  if (event.target.matches(".elevasi-input")) updateElevasi(event.target);
   if (event.target.matches(".row-check")) {
     toggleRowSelection(Number(event.target.dataset.id), event.target.checked);
   }

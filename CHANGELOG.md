@@ -6,6 +6,12 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 dan proyek ini mengikuti [Semantic Versioning](https://semver.org/lang/id/)
 (`MAJOR.MINOR.PATCH`).
 
+## [1.1.0] - 2026-08-19
+
+### Added
+- Kolom pengukuran fisik manual per baris data di Riwayat Pengukuran: `Diameter (cm)`, `Rotasi` (A/B/C/D), dan `Elevasi (cm)` (jarak titik sensor dari alas). Semua kolom bersifat opsional dan diisi/diubah langsung dari tabel, tersimpan lewat endpoint `PATCH /api/measurements/<id>/diameter`, `/rotasi`, dan `/elevasi`. Ikut disertakan di ekspor CSV.
+- Migrasi skema database otomatis dan idempoten (`ALTER TABLE ADD COLUMN`) untuk `diameter_cm`, `rotasi`, `elevasi_cm` -- aman dijalankan di database lama tanpa mengubah data spektral/label yang sudah ada.
+
 ## [1.0.2] - 2026-08-17
 
 ### Removed

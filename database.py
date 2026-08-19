@@ -18,6 +18,9 @@ SCHEMA_COLUMNS = (
     "scan_no INTEGER NOT NULL",
     *(f"{col} REAL NOT NULL" for col in CHANNEL_KEYS),
     "label TEXT NOT NULL DEFAULT ''",
+    "diameter_cm REAL",
+    "rotasi TEXT NOT NULL DEFAULT ''",
+    "elevasi_cm REAL",
 )
 
 INSERT_FIELDS = ("timestamp", "fruit_id", "scan_no", *CHANNEL_KEYS)
@@ -60,6 +63,22 @@ def initialize() -> None:
             # If nm410 is missing, this is an old schema table that needs migration
             if "nm410" not in columns:
                 _migrate_legacy_schema(connection, columns)
+                columns = [
+                    row[1]
+                    for row in connection.execute("PRAGMA table_info(measurements)").fetchall()
+                ]
+            # Kolom diameter_cm/rotasi/elevasi_cm ditambahkan 2026-08-17 untuk
+            # pengukuran manual operator (jangkar sortasi fisik jambu). Migrasi
+            # idempotent lewat ALTER TABLE ADD COLUMN -- aman dijalankan
+            # berkali-kali, tidak menyentuh data spektral/label yang sudah ada.
+            if "diameter_cm" not in columns:
+                connection.execute("ALTER TABLE measurements ADD COLUMN diameter_cm REAL")
+            if "rotasi" not in columns:
+                connection.execute(
+                    "ALTER TABLE measurements ADD COLUMN rotasi TEXT NOT NULL DEFAULT ''"
+                )
+            if "elevasi_cm" not in columns:
+                connection.execute("ALTER TABLE measurements ADD COLUMN elevasi_cm REAL")
         else:
             _create_measurements_table(connection)
 
@@ -296,6 +315,51 @@ def update_label(measurement_id: int, label: str) -> dict[str, Any] | None:
         connection.execute(
             "UPDATE measurements SET label = ? WHERE id = ?",
             (label, measurement_id),
+        )
+        row = connection.execute(
+            "SELECT * FROM measurements WHERE id = ?", (measurement_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def update_diameter(measurement_id: int, diameter_cm: float | None) -> dict[str, Any] | None:
+    """Simpan diameter buah (cm) yang diukur manual oleh operator.
+
+    diameter_cm boleh None -- artinya belum diukur/dikosongkan kembali.
+    """
+    with database_connection() as connection:
+        connection.execute(
+            "UPDATE measurements SET diameter_cm = ? WHERE id = ?",
+            (diameter_cm, measurement_id),
+        )
+        row = connection.execute(
+            "SELECT * FROM measurements WHERE id = ?", (measurement_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def update_rotasi(measurement_id: int, rotasi: str) -> dict[str, Any] | None:
+    """Simpan orientasi rotasi buah saat pemindaian (A/B/C/D, atau '' jika kosong)."""
+    with database_connection() as connection:
+        connection.execute(
+            "UPDATE measurements SET rotasi = ? WHERE id = ?",
+            (rotasi, measurement_id),
+        )
+        row = connection.execute(
+            "SELECT * FROM measurements WHERE id = ?", (measurement_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def update_elevasi(measurement_id: int, elevasi_cm: float | None) -> dict[str, Any] | None:
+    """Simpan elevasi (cm) -- jarak titik sensor dari alas -- yang diukur manual.
+
+    elevasi_cm boleh None -- artinya belum diukur/dikosongkan kembali.
+    """
+    with database_connection() as connection:
+        connection.execute(
+            "UPDATE measurements SET elevasi_cm = ? WHERE id = ?",
+            (elevasi_cm, measurement_id),
         )
         row = connection.execute(
             "SELECT * FROM measurements WHERE id = ?", (measurement_id,)
