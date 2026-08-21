@@ -173,8 +173,8 @@ tr.row-selected { background: var(--green-soft); }
 .label-select { padding: 5px 7px; border: 1px solid var(--line); border-radius: 999px; outline: 0; background: #fff4eb; color: #9f4a1f; font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .label-select[value="bagus"] { background: #e8f6eb; color: #24693a; }
 .label-select[value="rusak"] { background: #fbe9e6; color: #a23b2d; }
-.diameter-input, .elevasi-input { width: 64px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 8px; outline: 0; background: var(--paper); color: var(--ink); font-size: 10px; font-family: ui-monospace, Consolas, monospace; }
-.diameter-input:focus, .elevasi-input:focus { border-color: var(--green); }
+.diameter-input, .jarak-input { width: 64px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 8px; outline: 0; background: var(--paper); color: var(--ink); font-size: 10px; font-family: ui-monospace, Consolas, monospace; }
+.diameter-input:focus, .jarak-input:focus { border-color: var(--green); }
 .rotasi-select { padding: 5px 7px; border: 1px solid var(--line); border-radius: 999px; outline: 0; background: var(--paper); color: var(--ink); font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .empty-state { padding: 42px; color: var(--muted); text-align: center; }
 

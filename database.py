@@ -19,8 +19,9 @@ SCHEMA_COLUMNS = (
     *(f"{col} REAL NOT NULL" for col in CHANNEL_KEYS),
     "label TEXT NOT NULL DEFAULT ''",
     "diameter_cm REAL",
-    "rotasi TEXT NOT NULL DEFAULT ''",
-    "elevasi_cm REAL",
+    "rotasi_sensor TEXT NOT NULL DEFAULT ''",
+    "rotasi_buah TEXT NOT NULL DEFAULT ''",
+    "jarak_cm REAL",
 )
 
 INSERT_FIELDS = ("timestamp", "fruit_id", "scan_no", *CHANNEL_KEYS)
@@ -67,18 +68,42 @@ def initialize() -> None:
                     row[1]
                     for row in connection.execute("PRAGMA table_info(measurements)").fetchall()
                 ]
-            # Kolom diameter_cm/rotasi/elevasi_cm ditambahkan 2026-08-17 untuk
-            # pengukuran manual operator (jangkar sortasi fisik jambu). Migrasi
+            # Kolom pengukuran fisik manual operator (jangkar sortasi fisik
+            # jambu), ditambahkan/diubah 2026-08-17 s/d 2026-08-19. Migrasi
             # idempotent lewat ALTER TABLE ADD COLUMN -- aman dijalankan
             # berkali-kali, tidak menyentuh data spektral/label yang sudah ada.
+            #
+            # CATATAN NON-DESTRUKTIF: kolom lama `rotasi` (field rotasi
+            # tunggal, sebelum dipecah jadi Rotasi Sensor/Rotasi Buah),
+            # `elevasi_cm`, dan `tinggi_cm` SENGAJA TIDAK PERNAH di-DROP di
+            # sini walau sudah tidak dipakai aplikasi -- kalau kolom itu ada
+            # (dari versi sebelumnya) dan sudah terisi data, data itu tetap
+            # utuh tersimpan di database, hanya tidak lagi dibaca/ditulis.
+            had_legacy_rotasi = "rotasi" in columns
             if "diameter_cm" not in columns:
                 connection.execute("ALTER TABLE measurements ADD COLUMN diameter_cm REAL")
-            if "rotasi" not in columns:
+            if "rotasi_sensor" not in columns:
                 connection.execute(
-                    "ALTER TABLE measurements ADD COLUMN rotasi TEXT NOT NULL DEFAULT ''"
+                    "ALTER TABLE measurements ADD COLUMN rotasi_sensor TEXT NOT NULL DEFAULT ''"
                 )
-            if "elevasi_cm" not in columns:
-                connection.execute("ALTER TABLE measurements ADD COLUMN elevasi_cm REAL")
+            if "rotasi_buah" not in columns:
+                connection.execute(
+                    "ALTER TABLE measurements ADD COLUMN rotasi_buah TEXT NOT NULL DEFAULT ''"
+                )
+            if "jarak_cm" not in columns:
+                connection.execute("ALTER TABLE measurements ADD COLUMN jarak_cm REAL")
+
+            if had_legacy_rotasi:
+                # Migrasi satu-kali: pindahkan nilai `rotasi` lama (field
+                # tunggal) ke `rotasi_buah` -- representasi paling dekat
+                # dengan makna aslinya (orientasi buah saat discan). Guard
+                # WHERE rotasi_buah kosong membuat ini idempotent dan tidak
+                # pernah menimpa nilai rotasi_buah yang sudah diisi manual.
+                connection.execute(
+                    "UPDATE measurements SET rotasi_buah = rotasi "
+                    "WHERE (rotasi_buah IS NULL OR rotasi_buah = '') "
+                    "AND rotasi IS NOT NULL AND rotasi != ''"
+                )
         else:
             _create_measurements_table(connection)
 
@@ -338,12 +363,12 @@ def update_diameter(measurement_id: int, diameter_cm: float | None) -> dict[str,
     return dict(row) if row else None
 
 
-def update_rotasi(measurement_id: int, rotasi: str) -> dict[str, Any] | None:
-    """Simpan orientasi rotasi buah saat pemindaian (A/B/C/D, atau '' jika kosong)."""
+def update_rotasi_sensor(measurement_id: int, rotasi_sensor: str) -> dict[str, Any] | None:
+    """Simpan orientasi rotasi SENSOR saat pemindaian (A/B/C/D, atau '' jika kosong)."""
     with database_connection() as connection:
         connection.execute(
-            "UPDATE measurements SET rotasi = ? WHERE id = ?",
-            (rotasi, measurement_id),
+            "UPDATE measurements SET rotasi_sensor = ? WHERE id = ?",
+            (rotasi_sensor, measurement_id),
         )
         row = connection.execute(
             "SELECT * FROM measurements WHERE id = ?", (measurement_id,)
@@ -351,15 +376,28 @@ def update_rotasi(measurement_id: int, rotasi: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def update_elevasi(measurement_id: int, elevasi_cm: float | None) -> dict[str, Any] | None:
-    """Simpan elevasi (cm) -- jarak titik sensor dari alas -- yang diukur manual.
+def update_rotasi_buah(measurement_id: int, rotasi_buah: str) -> dict[str, Any] | None:
+    """Simpan orientasi rotasi BUAH saat pemindaian (A/B/C/D, atau '' jika kosong)."""
+    with database_connection() as connection:
+        connection.execute(
+            "UPDATE measurements SET rotasi_buah = ? WHERE id = ?",
+            (rotasi_buah, measurement_id),
+        )
+        row = connection.execute(
+            "SELECT * FROM measurements WHERE id = ?", (measurement_id,)
+        ).fetchone()
+    return dict(row) if row else None
 
-    elevasi_cm boleh None -- artinya belum diukur/dikosongkan kembali.
+
+def update_jarak(measurement_id: int, jarak_cm: float | None) -> dict[str, Any] | None:
+    """Simpan jarak sensor ke jambu (cm) yang diukur manual oleh operator.
+
+    jarak_cm boleh None -- artinya belum diukur/dikosongkan kembali.
     """
     with database_connection() as connection:
         connection.execute(
-            "UPDATE measurements SET elevasi_cm = ? WHERE id = ?",
-            (elevasi_cm, measurement_id),
+            "UPDATE measurements SET jarak_cm = ? WHERE id = ?",
+            (jarak_cm, measurement_id),
         )
         row = connection.execute(
             "SELECT * FROM measurements WHERE id = ?", (measurement_id,)

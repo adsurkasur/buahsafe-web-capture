@@ -37,7 +37,7 @@ FRUIT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,30}$")
 VALID_LABELS = {"", "normal", "anomali"}
 VALID_ROTASI = {"", "A", "B", "C", "D"}
 MAX_DIAMETER_CM = 50.0
-MAX_ELEVASI_CM = 100.0
+MAX_JARAK_CM = 100.0
 
 database.initialize()
 atexit.register(device.disconnect)
@@ -205,7 +205,7 @@ def api_update_label(measurement_id: int):
 
 
 def _parse_manual_measurement(raw: Any, field_label: str, max_value: float) -> tuple[float | None, str | None]:
-    """Parse input angka manual (diameter/elevasi) dari operator.
+    """Parse input angka manual (diameter/jarak) dari operator.
 
     Nilai kosong ("" atau None) berarti belum diukur -> dikembalikan sebagai
     None (bukan error). Selain itu harus berupa angka positif yang masuk akal
@@ -235,26 +235,38 @@ def api_update_diameter(measurement_id: int):
     return jsonify({"measurement": measurement, "summary": database.summary()})
 
 
-@app.patch("/api/measurements/<int:measurement_id>/rotasi")
-def api_update_rotasi(measurement_id: int):
+@app.patch("/api/measurements/<int:measurement_id>/rotasi-sensor")
+def api_update_rotasi_sensor(measurement_id: int):
     payload = request.get_json(silent=True) or {}
-    rotasi = str(payload.get("rotasi", "")).strip().upper()
+    rotasi = str(payload.get("rotasi_sensor", "")).strip().upper()
     if rotasi not in VALID_ROTASI:
-        return jsonify({"error": "Rotasi harus kosong, A, B, C, atau D"}), 400
-    measurement = database.update_rotasi(measurement_id, rotasi)
+        return jsonify({"error": "Rotasi Sensor harus kosong, A, B, C, atau D"}), 400
+    measurement = database.update_rotasi_sensor(measurement_id, rotasi)
     if measurement is None:
         return jsonify({"error": "Data tidak ditemukan"}), 404
     return jsonify({"measurement": measurement, "summary": database.summary()})
 
 
-@app.patch("/api/measurements/<int:measurement_id>/elevasi")
-def api_update_elevasi(measurement_id: int):
+@app.patch("/api/measurements/<int:measurement_id>/rotasi-buah")
+def api_update_rotasi_buah(measurement_id: int):
     payload = request.get_json(silent=True) or {}
-    value, error = _parse_manual_measurement(payload.get("elevasi_cm"), "Elevasi", MAX_ELEVASI_CM)
+    rotasi = str(payload.get("rotasi_buah", "")).strip().upper()
+    if rotasi not in VALID_ROTASI:
+        return jsonify({"error": "Rotasi Buah harus kosong, A, B, C, atau D"}), 400
+    measurement = database.update_rotasi_buah(measurement_id, rotasi)
+    if measurement is None:
+        return jsonify({"error": "Data tidak ditemukan"}), 404
+    return jsonify({"measurement": measurement, "summary": database.summary()})
+
+
+@app.patch("/api/measurements/<int:measurement_id>/jarak")
+def api_update_jarak(measurement_id: int):
+    payload = request.get_json(silent=True) or {}
+    value, error = _parse_manual_measurement(payload.get("jarak_cm"), "Jarak", MAX_JARAK_CM)
     if error:
-        debug_logger.add("WARN", "API", f"Update elevasi gagal: {error}")
+        debug_logger.add("WARN", "API", f"Update jarak gagal: {error}")
         return jsonify({"error": error}), 400
-    measurement = database.update_elevasi(measurement_id, value)
+    measurement = database.update_jarak(measurement_id, value)
     if measurement is None:
         return jsonify({"error": "Data tidak ditemukan"}), 404
     return jsonify({"measurement": measurement, "summary": database.summary()})
@@ -271,8 +283,9 @@ def export_csv():
         *CHANNEL_KEYS,
         "label",
         "diameter_cm",
-        "rotasi",
-        "elevasi_cm",
+        "rotasi_sensor",
+        "rotasi_buah",
+        "jarak_cm",
     ]
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()

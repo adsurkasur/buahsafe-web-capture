@@ -338,12 +338,12 @@ function updateBulkBar() {
 
 function renderMeasurements() {
   if (state.tableLoading) {
-    elements.measurementRows.innerHTML = '<tr><td class="empty-state" colspan="27">Memuat data...</td></tr>';
+    elements.measurementRows.innerHTML = '<tr><td class="empty-state" colspan="28">Memuat data...</td></tr>';
   } else if (!state.measurements.length) {
     const msg = state.search || state.labelFilter !== "__all__"
       ? "Tidak ada data yang cocok dengan filter."
       : "Belum ada data pengukuran.";
-    elements.measurementRows.innerHTML = `<tr><td class="empty-state" colspan="27">${msg}</td></tr>`;
+    elements.measurementRows.innerHTML = `<tr><td class="empty-state" colspan="28">${msg}</td></tr>`;
   } else {
     elements.measurementRows.innerHTML = state.measurements.map((row) => `
       <tr class="${state.selectedIds.has(row.id) ? "row-selected" : ""}" data-row-id="${row.id}">
@@ -363,16 +363,25 @@ function renderMeasurements() {
           <input type="number" class="diameter-input" data-measurement-id="${row.id}" value="${row.diameter_cm ?? ""}" step="0.1" min="0" max="50" placeholder="—" aria-label="Diameter ${escapeHtml(row.fruit_id)} (cm)">
         </td>
         <td>
-          <select class="rotasi-select" data-measurement-id="${row.id}" aria-label="Rotasi ${escapeHtml(row.fruit_id)}">
-            <option value="" ${!row.rotasi ? "selected" : ""}>—</option>
-            <option value="A" ${row.rotasi === "A" ? "selected" : ""}>A</option>
-            <option value="B" ${row.rotasi === "B" ? "selected" : ""}>B</option>
-            <option value="C" ${row.rotasi === "C" ? "selected" : ""}>C</option>
-            <option value="D" ${row.rotasi === "D" ? "selected" : ""}>D</option>
+          <select class="rotasi-select rotasi-sensor-select" data-measurement-id="${row.id}" aria-label="Rotasi Sensor ${escapeHtml(row.fruit_id)}">
+            <option value="" ${!row.rotasi_sensor ? "selected" : ""}>—</option>
+            <option value="A" ${row.rotasi_sensor === "A" ? "selected" : ""}>A</option>
+            <option value="B" ${row.rotasi_sensor === "B" ? "selected" : ""}>B</option>
+            <option value="C" ${row.rotasi_sensor === "C" ? "selected" : ""}>C</option>
+            <option value="D" ${row.rotasi_sensor === "D" ? "selected" : ""}>D</option>
           </select>
         </td>
         <td>
-          <input type="number" class="elevasi-input" data-measurement-id="${row.id}" value="${row.elevasi_cm ?? ""}" step="0.1" min="0" max="100" placeholder="—" aria-label="Elevasi ${escapeHtml(row.fruit_id)} (cm)">
+          <select class="rotasi-select rotasi-buah-select" data-measurement-id="${row.id}" aria-label="Rotasi Buah ${escapeHtml(row.fruit_id)}">
+            <option value="" ${!row.rotasi_buah ? "selected" : ""}>—</option>
+            <option value="A" ${row.rotasi_buah === "A" ? "selected" : ""}>A</option>
+            <option value="B" ${row.rotasi_buah === "B" ? "selected" : ""}>B</option>
+            <option value="C" ${row.rotasi_buah === "C" ? "selected" : ""}>C</option>
+            <option value="D" ${row.rotasi_buah === "D" ? "selected" : ""}>D</option>
+          </select>
+        </td>
+        <td>
+          <input type="number" class="jarak-input" data-measurement-id="${row.id}" value="${row.jarak_cm ?? ""}" step="0.1" min="0" max="100" placeholder="—" aria-label="Jarak ${escapeHtml(row.fruit_id)} (cm)">
         </td>
         <td class="col-actions">
           <button class="row-delete-btn" type="button" data-id="${row.id}" data-fruit="${escapeHtml(row.fruit_id)}" title="Hapus baris ini" aria-label="Hapus baris ${escapeHtml(row.fruit_id)}">🗑️</button>
@@ -671,15 +680,30 @@ async function updateLabel(select) {
   }
 }
 
-async function updateRotasi(select) {
+async function updateRotasiSensor(select) {
   const previous = state.measurements.find((row) => row.id === Number(select.dataset.measurementId));
-  const prevValue = previous ? previous.rotasi || "" : "";
+  const prevValue = previous ? previous.rotasi_sensor || "" : "";
   try {
-    const payload = await api(`/api/measurements/${select.dataset.measurementId}/rotasi`, {
-      method: "PATCH", body: JSON.stringify({ rotasi: select.value }),
+    const payload = await api(`/api/measurements/${select.dataset.measurementId}/rotasi-sensor`, {
+      method: "PATCH", body: JSON.stringify({ rotasi_sensor: select.value }),
     });
     if (previous) Object.assign(previous, payload.measurement);
-    showToast("Rotasi diperbarui");
+    showToast("Rotasi Sensor diperbarui");
+  } catch (error) {
+    select.value = prevValue;
+    showToast(error.message, "error");
+  }
+}
+
+async function updateRotasiBuah(select) {
+  const previous = state.measurements.find((row) => row.id === Number(select.dataset.measurementId));
+  const prevValue = previous ? previous.rotasi_buah || "" : "";
+  try {
+    const payload = await api(`/api/measurements/${select.dataset.measurementId}/rotasi-buah`, {
+      method: "PATCH", body: JSON.stringify({ rotasi_buah: select.value }),
+    });
+    if (previous) Object.assign(previous, payload.measurement);
+    showToast("Rotasi Buah diperbarui");
   } catch (error) {
     select.value = prevValue;
     showToast(error.message, "error");
@@ -701,15 +725,15 @@ async function updateDiameter(input) {
   }
 }
 
-async function updateElevasi(input) {
+async function updateJarak(input) {
   const previous = state.measurements.find((row) => row.id === Number(input.dataset.measurementId));
-  const prevValue = previous && previous.elevasi_cm != null ? previous.elevasi_cm : "";
+  const prevValue = previous && previous.jarak_cm != null ? previous.jarak_cm : "";
   try {
-    const payload = await api(`/api/measurements/${input.dataset.measurementId}/elevasi`, {
-      method: "PATCH", body: JSON.stringify({ elevasi_cm: input.value.trim() }),
+    const payload = await api(`/api/measurements/${input.dataset.measurementId}/jarak`, {
+      method: "PATCH", body: JSON.stringify({ jarak_cm: input.value.trim() }),
     });
     if (previous) Object.assign(previous, payload.measurement);
-    showToast("Elevasi diperbarui");
+    showToast("Jarak diperbarui");
   } catch (error) {
     input.value = prevValue;
     showToast(error.message, "error");
@@ -842,9 +866,10 @@ elements.fruitId.addEventListener("input", () => {
 
 elements.measurementRows.addEventListener("change", (event) => {
   if (event.target.matches(".label-select")) updateLabel(event.target);
-  if (event.target.matches(".rotasi-select")) updateRotasi(event.target);
+  if (event.target.matches(".rotasi-sensor-select")) updateRotasiSensor(event.target);
+  if (event.target.matches(".rotasi-buah-select")) updateRotasiBuah(event.target);
   if (event.target.matches(".diameter-input")) updateDiameter(event.target);
-  if (event.target.matches(".elevasi-input")) updateElevasi(event.target);
+  if (event.target.matches(".jarak-input")) updateJarak(event.target);
   if (event.target.matches(".row-check")) {
     toggleRowSelection(Number(event.target.dataset.id), event.target.checked);
   }
