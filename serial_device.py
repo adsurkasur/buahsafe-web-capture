@@ -231,13 +231,30 @@ def parse_data_line(line: str, *, silent: bool = False) -> dict[str, float | int
     return result
 
 
+class _StuckBufferError(Exception):
+    """Sinyal internal: buffer RX serial terdeteksi macet (baris identik
+    terus-menerus terbaca jauh lebih cepat daripada laju baud fisik
+    memungkinkan). Ditangkap di _wait_for() untuk memicu cycle port."""
+
+
 class BuahSafeDevice:
+    # Kalau baris yang PERSIS SAMA terbaca berturut-turut sebanyak ini,
+    # itu bukan transmisi asli (pada 115200 baud, baris ~28 byte perlu
+    # ~2.4ms; pernah teramati baris identik terbaca >1000x/detik --
+    # jauh lebih cepat dari itu). Ini tanda OS/driver serial "macet":
+    # ReadFile/read_until() mengembalikan byte lama yang sama berulang
+    # tanpa pernah maju, dan reset_input_buffer() saja tidak cukup untuk
+    # membersihkannya (teramati bertahan lintas beberapa percobaan scan).
+    STUCK_DUPLICATE_THRESHOLD = 5
+
     def __init__(self) -> None:
         self._serial: serial.Serial | None = None
         self._lock = threading.RLock()
         self.port: str | None = None
         self.last_error: str | None = None
         self.last_raw_message: str | None = None
+        self._last_decoded_line: str | None = None
+        self._duplicate_rx_streak: int = 0
 
     @staticmethod
     def available_ports() -> list[dict[str, str]]:
@@ -279,6 +296,8 @@ class BuahSafeDevice:
                 debug_logger.add("INFO", "DEVICE", f"Port {port} terbuka. Menunggu reset ESP32 (2.0 detik)...")
                 time.sleep(2.0)
                 connection.reset_input_buffer()
+                self._last_decoded_line = None
+                self._duplicate_rx_streak = 0
 
                 debug_logger.add("INFO", "SERIAL_TX", "Mengirim perintah PING\\n...")
                 connection.write(b"PING\n")
@@ -454,6 +473,49 @@ class BuahSafeDevice:
                     )
 
         self._serial.reset_input_buffer()
+        self._last_decoded_line = None
+        self._duplicate_rx_streak = 0
+
+    def _cycle_port(self) -> None:
+        """Tutup & buka ulang handle serial untuk membersihkan buffer RX
+        OS/driver yang macet.
+
+        Ditemukan lewat log: baris identik yang sama persis terbaca
+        beribu-ribu kali dalam hitungan detik (jauh lebih cepat dari laju
+        baud fisik 115200), bertahan lintas beberapa percobaan scan
+        berturut-turut meski reset_input_buffer() sudah dipanggil tiap
+        percobaan. Ini pola khas driver VCP (mis. CP210x di Windows) yang
+        "nyangkut" -- ReadFile mengembalikan byte lama yang sama tanpa
+        pernah maju. reset_input_buffer() cuma minta driver mengosongkan
+        buffernya; kalau posisi baca internal driver sendiri yang macet,
+        itu tidak cukup. Close+reopen handle memaksa driver melepas &
+        mengambil ulang buffer internalnya dari awal.
+        """
+        if self._serial is None:
+            return
+        port = self.port
+        debug_logger.add(
+            "WARN",
+            "DEVICE",
+            f"Buffer serial macet terdeteksi (baris identik terus terbaca) -- "
+            f"melakukan cycle (tutup+buka ulang) port {port}...",
+        )
+        try:
+            self._serial.close()
+        except (serial.SerialException, OSError):
+            pass
+        time.sleep(0.3)
+        try:
+            self._serial.open()
+            self._serial.reset_input_buffer()
+            self._serial.reset_output_buffer()
+            debug_logger.add("INFO", "DEVICE", f"Port {port} berhasil di-cycle ulang.")
+        except (serial.SerialException, OSError) as error:
+            debug_logger.add("ERROR", "DEVICE", f"Gagal cycle ulang port {port}: {error}")
+            self.disconnect(keep_error=True)
+        finally:
+            self._last_decoded_line = None
+            self._duplicate_rx_streak = 0
 
     def notify_saved(self, scan_no: int) -> None:
         """Beri tahu firmware bahwa data BENAR-BENAR sudah tersimpan di
@@ -477,6 +539,17 @@ class BuahSafeDevice:
                     "WARN", "DEVICE",
                     f"Gagal mengirim ack SAVED,{scan_no} ke firmware (data tetap aman di database): {error}",
                 )
+
+    # Baris "DATA,..." terpanjang yang mungkin sah dari firmware sekitar
+    # ~300 byte (buffer firmware sendiri dibatasi 420 byte, lihat
+    # buahsafe.ino). Kalau baris yang sedang terkumpul sudah jauh melebihi
+    # itu tanpa pernah ketemu newline, itu BUKAN satu baris sah yang lambat
+    # -- itu tanda newline dari transmisi sebelumnya hilang/rusak di jalur
+    # serial dan kita sudah mulai "menelan" byte dari transmisi BERIKUTNYA
+    # ke buffer yang sama (pernah teramati: 1 baris 1864 karakter/202 kolom
+    # hasil beberapa transmisi DATA yang ke-gabung). Membiarkan itu terus
+    # menunggu sampai grace period penuh cuma memperparah penggabungannya.
+    MAX_LINE_BYTES = 600
 
     def _read_complete_line(
         self,
@@ -507,8 +580,48 @@ class BuahSafeDevice:
                 buffer.extend(chunk)
                 if buffer.endswith(b"\n"):
                     decoded = buffer.decode("utf-8", errors="replace").strip()
+
+                    if decoded and decoded == self._last_decoded_line:
+                        self._duplicate_rx_streak += 1
+                    else:
+                        self._last_decoded_line = decoded
+                        self._duplicate_rx_streak = 0
+
+                    if self._duplicate_rx_streak >= self.STUCK_DUPLICATE_THRESHOLD:
+                        debug_logger.add(
+                            "ERROR",
+                            "SERIAL_RX",
+                            f"Baris identik terbaca {self._duplicate_rx_streak + 1}x berturut-turut -- "
+                            "jauh lebih cepat dari laju baud fisik, ini buffer OS/driver macet "
+                            "bukan transmisi asli.",
+                            raw_data=decoded,
+                        )
+                        self._cycle_port()
+                        raise _StuckBufferError(decoded)
+
                     debug_logger.add("DEBUG", "SERIAL_RX", f"Diterima: '{decoded}' ({len(decoded)} chars)", raw_data=decoded)
                     return decoded
+
+                if len(buffer) > self.MAX_LINE_BYTES:
+                    # Kemungkinan besar newline hilang & mulai menelan
+                    # transmisi berikutnya -- buang buffer, kosongkan sisa
+                    # yang masih nyangkut di OS agar TIDAK ikut ke-gabung ke
+                    # percobaan baca berikutnya, lalu menyerah lebih awal
+                    # (jangan tunggu grace period penuh -- itu cuma
+                    # memperpanjang penggabungan).
+                    debug_logger.add(
+                        "WARN",
+                        "SERIAL_RX",
+                        f"Baris melebihi {self.MAX_LINE_BYTES} byte tanpa newline -- "
+                        "kemungkinan newline hilang & beberapa transmisi ke-gabung. "
+                        "Membuang & menyerah lebih awal alih-alih menunggu penuh.",
+                        raw_data=buffer.decode("utf-8", errors="replace")[:200],
+                    )
+                    try:
+                        self._serial.reset_input_buffer()
+                    except (serial.SerialException, OSError):
+                        pass
+                    return None
 
                 # Baris belum lengkap tapi sudah mulai masuk -- beri sedikit
                 # tambahan waktu supaya tidak terpotong di tengah jalan.
@@ -516,6 +629,16 @@ class BuahSafeDevice:
                 if extended > effective_deadline:
                     effective_deadline = extended
             time.sleep(0.01)
+
+        if buffer:
+            # Timeout murni (bukan length cap): buffer parsial masih ada
+            # sisa di OS buffer kemungkinan. Bersihkan supaya percobaan
+            # berikutnya mulai dari kondisi bersih, bukan nyambung ke sisa
+            # transmisi yang terputus ini.
+            try:
+                self._serial.reset_input_buffer()
+            except (serial.SerialException, OSError):
+                pass
         return None
 
     def _wait_for(self, expected: str, timeout: float, prefix: bool = False) -> str:
@@ -527,7 +650,15 @@ class BuahSafeDevice:
         debug_logger.add("DEBUG", "DEVICE", f"Menunggu pola serial '{expected}' (timeout {timeout}s)...")
 
         while time.monotonic() < deadline:
-            line = self._read_complete_line(deadline)
+            try:
+                line = self._read_complete_line(deadline)
+            except _StuckBufferError as error:
+                err_msg = (
+                    "Buffer serial macet (baris identik terus terbaca) -- port sudah "
+                    f"di-cycle otomatis, coba scan ulang. Baris macet: {error}"
+                )
+                debug_logger.add("ERROR", "DEVICE", err_msg, raw_data=str(error))
+                raise DeviceError(err_msg, raw_line=str(error)) from error
             if line is None:
                 continue
             if not line:
