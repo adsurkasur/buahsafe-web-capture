@@ -17,14 +17,10 @@ def main():
     if not excel_files:
         raise FileNotFoundError("Tidak ditemukan file .xlsx di folder ini!")
 
-    # Prioritaskan file gabungan jika ada
-    target_file = None
-    for f in excel_files:
-        if "gabungan" in os.path.basename(f).lower():
-            target_file = f
-            break
-    if not target_file:
-        target_file = excel_files[0]
+    # Prioritaskan file gabungan jika ada; jika lebih dari satu, pakai yang terbaru (mtime)
+    gabungan_files = [f for f in excel_files if "gabungan" in os.path.basename(f).lower()]
+    candidates = gabungan_files or excel_files
+    target_file = max(candidates, key=os.path.getmtime)
 
     print(f"\n[INFO] Membaca dataset: {os.path.basename(target_file)}")
 
