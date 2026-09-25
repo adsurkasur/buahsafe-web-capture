@@ -16,7 +16,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.inspection import permutation_importance
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DATASET = os.path.join(BASE, "..", "fixed", "buahsafe_dataset_gabungan_08092026_clean.xlsx")
+DATASET = os.path.join(BASE, "..", "finalised", "buahsafe_dataset_gabungan_final.xlsx")
 OUT_DIR = os.path.join(BASE, "model_comparison_output")
 os.makedirs(OUT_DIR, exist_ok=True)
 

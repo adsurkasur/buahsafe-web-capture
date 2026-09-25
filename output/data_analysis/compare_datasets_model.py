@@ -22,7 +22,7 @@ FEATURES = ["nm410", "nm435", "nm460", "nm485", "nm510", "nm535", "nm560", "nm58
 
 DATASETS = {
     "29082026": os.path.join(FIXED, "buahsafe_dataset_gabungan_29082026.xlsx"),
-    "08092026_clean": os.path.join(FIXED, "buahsafe_dataset_gabungan_08092026_clean.xlsx"),
+    "final_08092026": os.path.join(BASE, "..", "finalised", "buahsafe_dataset_gabungan_final.xlsx"),
 }
 
 
@@ -79,7 +79,7 @@ def main():
     x = np.arange(len(metrics))
     width = 0.35
     fig, ax = plt.subplots(figsize=(9, 5.5))
-    colors = {"29082026": "#7f7f7f", "08092026_clean": "#2ca02c"}
+    colors = {"29082026": "#7f7f7f", "final_08092026": "#2ca02c"}
     for i, name in enumerate(DATASETS):
         row = df_summary[df_summary["dataset"] == name].iloc[0]
         means = [row[f"{m}_mean"] for m in metrics]
@@ -90,7 +90,7 @@ def main():
     ax.set_xticklabels([m.upper() for m in metrics])
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("Skor (5-fold GroupKFold by fruit_id)")
-    ax.set_title("Perbandingan Performa Model: Dataset 29082026 vs 08092026 (label bersih)")
+    ax.set_title("Perbandingan Performa Model: Dataset 29082026 vs final 08092026 (ID & label diperbaiki)")
     ax.legend()
     ax.grid(axis="y", alpha=0.3)
     plt.tight_layout()

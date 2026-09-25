@@ -17,7 +17,7 @@ from sklearn.model_selection import GroupKFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DATASET = os.path.join(BASE, "..", "fixed", "buahsafe_dataset_gabungan_08092026_clean.xlsx")
+DATASET = os.path.join(BASE, "..", "finalised", "buahsafe_dataset_gabungan_final.xlsx")
 OUT_DIR = os.path.join(BASE, "model_comparison_output")
 os.makedirs(OUT_DIR, exist_ok=True)
 

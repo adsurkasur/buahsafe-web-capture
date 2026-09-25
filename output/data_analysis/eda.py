@@ -1,6 +1,5 @@
 import os
 import sys
-import glob
 import traceback
 
 def main():
@@ -12,15 +11,8 @@ def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(base_dir)
 
-    # 2. Mencari File Dataset Excel
-    excel_files = glob.glob(os.path.join(base_dir, "*.xlsx"))
-    if not excel_files:
-        raise FileNotFoundError("Tidak ditemukan file .xlsx di folder ini!")
-
-    # Prioritaskan file gabungan jika ada; jika lebih dari satu, pakai yang terbaru (mtime)
-    gabungan_files = [f for f in excel_files if "gabungan" in os.path.basename(f).lower()]
-    candidates = gabungan_files or excel_files
-    target_file = max(candidates, key=os.path.getmtime)
+    # 2. Dataset final (ID & label sudah diperbaiki, lihat ../finalised/finalise_dataset.py)
+    target_file = os.path.join(base_dir, "..", "finalised", "buahsafe_dataset_gabungan_final.xlsx")
 
     print(f"\n[INFO] Membaca dataset: {os.path.basename(target_file)}")
 
