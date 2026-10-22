@@ -1,5 +1,55 @@
 # Activity Log
 
+### [2026-10-23 00:25] [Claude Code]
+- **Goal**: Audit kesiapan produksi backend sebagai pasangan `buahsafe-client` dan perbaikan temuan keamanan/integritas.
+- **Actions**:
+  - Menemukan bahwa `test_auth_production.py`, `test_sandbox_e2e.py`, dan `tests/test_server_api.py` menulis ke `data/buahsafe.db` (DB dataset nyata): 5 baris `JB-SANDBOX-01`, 4 akun uji, 31 token. Menambah override `BUAHSAFE_DB_PATH` di `database.py`; ketiga suite kini memakai DB sementara (`tests/__init__.py` + header tiap berkas root) dan `test_00_isolated_database` menjaga regresinya. Data yang telanjur tercemar **tidak** dihapus (menunggu keputusan pemilik).
+  - `/api/scan`: kegagalan inferensi ML tidak lagi dipalsukan menjadi `NORMAL` 50%. Spektrum tetap disimpan tanpa prediksi, respons 503 mengarahkan pemeriksaan manual. `predictor.predict` tidak lagi memakai heuristik tebakan 730/680 bila model tidak ada (folder `models/` belum ter-commit, jadi clone baru akan diam-diam memakai tebakan).
+  - CORS `*` diganti allowlist `BUAHSAFE_CORS_ORIGINS` (bawaan `http://localhost:5173,http://127.0.0.1:5173`).
+  - Token di query string (`?token=`) dihapus karena ikut tercatat di feed `/api/debug` yang tanpa otentikasi.
+  - `get_analytics_summary`: satu putusan per baris (prediksi lebih dulu, label sebagai cadangan) dan tingkat kelolosan dihitung dari baris berputusan saja (sebelumnya 0,0% karena baris akuisisi dataset ikut jadi penyebut).
+- **Files Modified**: `app.py`, `database.py`, `predictor.py`, `tests/__init__.py`, `tests/test_app.py`, `tests/test_server_api.py`, `test_auth_production.py`, `test_sandbox_e2e.py`, `logs/*`.
+- **Verification**: `run_local_sandbox.py --test` lolos 4/4: 64 unit test, 9 auth test, 6 E2E, build frontend. Jumlah baris `data/buahsafe.db` tetap 77 sebelum dan sesudah suite. Uji peramban 4 persona dijalankan terhadap salinan DB di scratchpad.
+
+### [2026-10-22 17:00] [Antigravity]
+- **Goal**: Implementasi otentikasi siap produksi (PBKDF2-HMAC-SHA256, token sesi Bearer 24 jam di SQLite, perlindungan rute berbasis peran / RBAC, dan manajemen pengguna oleh Owner) serta pembaruan seluruh suite pengujian.
+- **Actions**:
+  - Mengembangkan helper kriptografi `hash_password` (PBKDF2-HMAC-SHA256, 100.000 iterasi, salt 16-byte unik) dan `verify_password`.
+  - Memperluas skema SQLite secara non-destruktif dengan tabel `auth_tokens` dan kolom pengguna (`password_hash`, `salt`, `is_active`, `last_login`).
+  - Menulis decorator otorisasi `@require_auth(allowed_roles)` di `app.py` untuk memvalidasi token Bearer dan membatasi akses peran (Operator, Supervisor, Owner).
+  - Menyediakan endpoint manajemen pengguna untuk Owner (`GET /api/users`, `POST /api/users`, `PUT /api/users/<id>/password`, `DELETE /api/users/<id>`) dengan proteksi anti-hapus-diri-sendiri.
+  - Melindungi rute sensitif: scan sortasi, manajemen data mitra petani, serta penghapusan data pengukuran.
+  - Membangun berkas pengujian keamanan otentikasi `test_auth_production.py` (8 pengujian: hashing, login sah, penolakan password salah, penolakan token fiktif, RBAC operator vs owner, siklus akun pengguna, pencabutan token logout).
+  - Memperbarui unit test `tests/test_app.py`, `tests/test_server_api.py`, dan `test_sandbox_e2e.py` agar menyertakan token otorisasi yang sah.
+  - Menghubungkan pengujian otentikasi ke orkestrator satu perintah `run_local_sandbox.py --test`.
+- **Files Modified**: `database.py`, `app.py`, `test_auth_production.py` (baru), `tests/test_app.py`, `tests/test_server_api.py`, `test_sandbox_e2e.py`, `run_local_sandbox.py`, `logs/ACTIVITY_LOG.md`, `logs/DECISION_LOG.md`, `logs/CHANGELOG.md`.
+- **Verification**: Seluruh 4 tahapan pengujian otomatis di `run_local_sandbox.py --test` lolos 100% (62 Backend Unit Tests, 8 Production Auth Security Tests, 6 Sandbox E2E Tests, dan Frontend Production Build).
+
+### [2026-10-22 09:40] [Antigravity]
+- **Goal**: Otomasi pengujian local-first sandbox suite (E2E) dan validasi menyeluruh tanpa dependensi hardware fisik.
+- **Actions**:
+  - Mengembangkan berkas pengujian terisolasi `test_sandbox_e2e.py` yang mencakup 6 skenario kritis:
+    1. Health check & CORS preflight untuk kesiapan client Vercel.
+    2. Autentikasi multi-peran (Operator, Supervisor, Owner) dan penolakan kredensial tidak valid.
+    3. Inferensi akurasi model Machine Learning SVM (RBF) 6-kanal pada sampel normal vs. anomali.
+    4. Pemantauan armada perangkat dan alur persistensi scan.
+    5. Agregasi metrik analitik (pass rate, tren harian 14 hari).
+    6. Siklus hidup CRUD Data Master Petani Mitra.
+  - Memperbaiki penanganan encoding keluaran terminal Windows agar ramah cross-platform (CP1252/UTF-8).
+- **Files Modified**: `test_sandbox_e2e.py` (baru), `logs/ACTIVITY_LOG.md`, `logs/CHANGELOG.md`.
+- **Verification**: Seluruh 6 pengujian otomatis sandbox lolos (100% OK dalam 2.31s); 62 unit test bawaan lolos (100% OK dalam 3.12s).
+
+### [2026-10-22 09:35] [Antigravity]
+- **Goal**: Finalisasi backend server minimal dengan inferensi ML real-time, CORS untuk frontend Vercel, dan manajemen multi-peran (Operator, Supervisor, Owner).
+- **Actions**:
+  - Mengekspor model produksi SVM (RBF) 6-kanal kunci (`610, 680, 730, 760, 810, 860 nm`) ke `models/buahsafe_model_svm_6ch.joblib` (akurasi 78.0%, ROC-AUC 81.8%).
+  - Membuat modul `predictor.py` untuk inferensi spektral real-time dengan probabilitas keyakinan (*confidence score*).
+  - Memperluas skema `database.py` secara non-destruktif: migrasi kolom `prediction`, `confidence`, `device_id`, `operator_id` pada tabel `measurements`, serta inisialisasi tabel `users`, `devices`, dan `petani_mitra`.
+  - Mengintegrasikan CORS native dan endpoint `/api/auth/login`, `/api/predict`, `/api/devices`, `/api/analytics`, dan `/api/master-data/petani` ke `app.py`.
+  - Memperbaiki unit test CSV di `tests/test_app.py` dan menambahkan `tests/test_server_api.py`.
+- **Files Modified**: `export_model.py` (baru), `models/buahsafe_model_svm_6ch.joblib` (baru), `predictor.py` (baru), `database.py`, `app.py`, `tests/test_app.py`, `tests/test_server_api.py` (baru).
+- **Verification**: Seluruh 62 unit test lolos (`Ran 62 tests in 4.058s - OK`).
+
 ### [2026-09-25 07:41] [Antigravity]
 - **Goal**: Track Arduino IDE standard sketch directory `buahsafe/buahsafe.ino` alongside root sketch.
 - **Actions**: Added `buahsafe/buahsafe.ino` for direct Arduino IDE compatibility while preserving root `buahsafe.ino`.

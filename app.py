@@ -9,11 +9,13 @@ import platform
 import re
 import sys
 import traceback
+from functools import wraps
 from typing import Any
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, g, jsonify, render_template, request
 
 import database
+import predictor
 from _version import __version__
 from serial_device import (
     CHANNEL_KEYS,
@@ -38,9 +40,47 @@ VALID_LABELS = {"", "normal", "anomali"}
 VALID_ROTASI = {"", "A", "B", "C", "D"}
 MAX_DIAMETER_CM = 50.0
 MAX_JARAK_CM = 100.0
+CORS_ORIGINS = {
+    o.strip().rstrip("/")
+    for o in os.environ.get(
+        "BUAHSAFE_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+    ).split(",")
+    if o.strip()
+}
 
 database.initialize()
 atexit.register(device.disconnect)
+
+
+def _get_bearer_token() -> str | None:
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        if token:
+            return token
+    return None
+
+
+def require_auth(allowed_roles: list[str] | tuple[str, ...] | None = None):
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            token = _get_bearer_token()
+            if not token:
+                return jsonify({"error": "Sesi tidak ditemukan. Silakan masuk terlebih dahulu."}), 401
+            session = database.validate_session_token(token)
+            if not session:
+                return jsonify({"error": "Sesi telah berakhir atau tidak valid. Silakan masuk kembali."}), 401
+            g.current_user = session
+            if allowed_roles and session.get("role") not in allowed_roles:
+                return jsonify({
+                    "error": f"Akses ditolak. Fitur ini memerlukan hak akses: {', '.join(allowed_roles)}.",
+                    "required_roles": list(allowed_roles),
+                    "current_role": session.get("role"),
+                }), 403
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 @app.before_request
@@ -52,6 +92,29 @@ def log_request_info():
             f"{request.method} {request.path}",
             extra={"ip": request.remote_addr, "args": dict(request.args)},
         )
+
+
+@app.after_request
+def add_cors_headers(response: Response) -> Response:
+    """Izinkan CORS hanya untuk origin klien yang terdaftar (BUAHSAFE_CORS_ORIGINS).
+
+    Wildcard "*" membuat situs mana pun yang dibuka di peramban operator bisa membaca
+    data dan mengubah label dataset lewat endpoint lokal yang tidak memerlukan token.
+    """
+    origin = request.headers.get("Origin", "")
+    response.headers["Vary"] = "Origin"
+    if origin not in CORS_ORIGINS:
+        return response
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
+
+
+@app.route("/api/<path:subpath>", methods=["OPTIONS"])
+def api_options(subpath: str):
+    """Preflight handler untuk CORS."""
+    return "", 204
 
 
 @app.get("/")
@@ -100,9 +163,13 @@ def api_disconnect():
 
 
 @app.post("/api/scan")
+@require_auth(["operator", "supervisor", "owner"])
 def api_scan():
     payload = request.get_json(silent=True) or {}
     fruit_id = str(payload.get("fruit_id", "")).strip().upper()
+    device_id = str(payload.get("device_id", "BSF-001")).strip()
+    operator_id = str(payload.get("operator_id", "")).strip() or getattr(g, "current_user", {}).get("name", "")
+
     if not FRUIT_ID_PATTERN.fullmatch(fruit_id):
         err_msg = (
             "ID jambu wajib diisi (maks. 31 karakter; gunakan huruf, "
@@ -112,21 +179,196 @@ def api_scan():
         return jsonify({"error": err_msg}), 400
 
     reading = device.scan()
-    measurement = database.insert_measurement(fruit_id, reading)
+
+    # Eksekusi inferensi Machine Learning SVM (RBF)
+    try:
+        prediction_result = predictor.predict(reading)
+    except Exception as pred_err:
+        # Gagal-aman: jangan pernah mengarang putusan NORMAL. Spektrum tetap disimpan
+        # (tanpa prediksi) agar data tidak hilang, lalu operator diarahkan ke pemeriksaan manual.
+        logger.warning("Inferensi ML gagal: %s", pred_err)
+        measurement = database.insert_measurement(
+            fruit_id=fruit_id,
+            reading=reading,
+            device_id=device_id or "BSF-001",
+            operator_id=operator_id or "",
+        )
+        device.notify_saved(measurement["scan_no"])
+        debug_logger.add("ERROR", "ML", f"Inferensi gagal untuk {fruit_id} (record ID={measurement['id']}): {pred_err}")
+        return jsonify({
+            "error": "Model klasifikasi tidak dapat memproses pindaian ini. "
+                     "Pisahkan buah untuk pemeriksaan manual, lalu hubungi Supervisor QC.",
+            "measurement": measurement,
+        }), 503
+
+    measurement = database.insert_measurement(
+        fruit_id=fruit_id,
+        reading=reading,
+        prediction=prediction_result.get("result", ""),
+        confidence=prediction_result.get("confidence"),
+        device_id=device_id or "BSF-001",
+        operator_id=operator_id or "",
+    )
     debug_logger.add(
         "INFO",
         "DATABASE",
-        f"Record tersimpan ID={measurement['id']} (Buah={fruit_id}, Scan #{measurement['scan_no']})",
+        f"Record tersimpan ID={measurement['id']} (Buah={fruit_id}, Scan #{measurement['scan_no']}, Prediksi={prediction_result.get('result')})",
     )
     # Beri tahu firmware scan_no yang SAH (dari database) supaya LCD sinkron.
-    # Best-effort: kegagalan di sini tidak boleh menggagalkan response API,
-    # data sudah aman tersimpan di database terlepas dari ini.
     device.notify_saved(measurement["scan_no"])
     return jsonify({
         "measurement": measurement,
+        "prediction": prediction_result,
         "summary": database.summary(),
         "raw_line": debug_logger.last_raw_line,
     })
+
+
+@app.post("/api/predict")
+def api_predict():
+    """Endpoint inferensi ML mandiri dari data spektral (berguna untuk testing web/Vercel)."""
+    payload = request.get_json(silent=True) or {}
+    spectral = payload.get("spectral", payload)
+    try:
+        res = predictor.predict(spectral)
+        return jsonify(res)
+    except Exception as err:
+        return jsonify({"error": str(err)}), 400
+
+
+@app.post("/api/auth/login")
+def api_auth_login():
+    """Autentikasi peran pengguna dengan kata sandi PBKDF2 bergaram dan penerbitan token sesi 24 jam."""
+    payload = request.get_json(silent=True) or {}
+    username = str(payload.get("username", "")).strip().lower()
+    password = str(payload.get("password", "")).strip()
+
+    if not username or not password:
+        return jsonify({"ok": False, "error": "Nama pengguna dan kata sandi wajib diisi"}), 400
+
+    user, error = database.authenticate_user(username, password)
+    if error or not user:
+        debug_logger.add("WARN", "AUTH", f"Percobaan masuk gagal untuk '{username}': {error}")
+        return jsonify({"ok": False, "error": error or "Nama pengguna atau kata sandi tidak cocok"}), 401
+
+    token = database.create_session_token(user["id"], user["role"], hours=24)
+    debug_logger.add("INFO", "AUTH", f"Pengguna '{user['username']}' ({user['role']}) berhasil masuk")
+    return jsonify({
+        "ok": True,
+        "token": token,
+        "user": user,
+    })
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout():
+    """Pencabutan token sesi saat pengguna keluar."""
+    token = _get_bearer_token()
+    if not token:
+        payload = request.get_json(silent=True) or {}
+        token = payload.get("token")
+    if token:
+        database.revoke_session_token(token)
+    return jsonify({"ok": True, "message": "Berhasil keluar dari sesi"})
+
+
+@app.get("/api/auth/me")
+@require_auth()
+def api_auth_me():
+    """Memperoleh data profil sesi aktif pengguna saat ini."""
+    return jsonify({"ok": True, "user": g.current_user})
+
+
+@app.get("/api/users")
+@require_auth(["owner"])
+def api_get_users():
+    """Daftar pengguna sistem (khusus Owner)."""
+    return jsonify({"users": database.list_users()})
+
+
+@app.post("/api/users")
+@require_auth(["owner"])
+def api_create_user():
+    """Membuat pengguna baru dalam sistem (khusus Owner)."""
+    payload = request.get_json(silent=True) or {}
+    username = str(payload.get("username", ""))
+    name = str(payload.get("name", ""))
+    password = str(payload.get("password", ""))
+    role = str(payload.get("role", ""))
+
+    user, err = database.create_user(username, name, password, role)
+    if err:
+        return jsonify({"error": err}), 400
+    debug_logger.add("INFO", "USER_MGMT", f"Pengguna baru dibuat: {username} ({role}) oleh {g.current_user['username']}")
+    return jsonify({"ok": True, "user": user}), 201
+
+
+@app.put("/api/users/<user_id>/password")
+@require_auth(["owner"])
+def api_update_user_password(user_id: str):
+    """Mereset kata sandi akun pengguna (khusus Owner)."""
+    payload = request.get_json(silent=True) or {}
+    new_password = str(payload.get("password", ""))
+    ok, err = database.update_user_password(user_id, new_password)
+    if not ok:
+        return jsonify({"error": err or "Gagal memperbarui kata sandi"}), 400
+    debug_logger.add("INFO", "USER_MGMT", f"Kata sandi pengguna {user_id} diperbarui oleh {g.current_user['username']}")
+    return jsonify({"ok": True, "message": "Kata sandi berhasil diperbarui"})
+
+
+@app.delete("/api/users/<user_id>")
+@require_auth(["owner"])
+def api_delete_user(user_id: str):
+    """Menonaktifkan pengguna dari sistem (khusus Owner)."""
+    if user_id == g.current_user.get("id"):
+        return jsonify({"error": "Tidak dapat menghapus akun Anda sendiri yang sedang aktif"}), 400
+    ok = database.delete_user(user_id)
+    if not ok:
+        return jsonify({"error": "Pengguna tidak ditemukan atau sudah tidak aktif"}), 404
+    debug_logger.add("INFO", "USER_MGMT", f"Pengguna {user_id} dinonaktifkan oleh {g.current_user['username']}")
+    return jsonify({"ok": True, "message": "Pengguna berhasil dinonaktifkan"})
+
+
+@app.get("/api/devices")
+def api_devices():
+    """Daftar status armada pemindai BuahSafe."""
+    return jsonify({"devices": database.list_devices()})
+
+
+@app.get("/api/analytics")
+def api_analytics():
+    """Metrik analitik real-time dari database untuk supervisor/owner."""
+    return jsonify(database.get_analytics_summary())
+
+
+@app.get("/api/master-data/petani")
+def api_get_petani():
+    """Daftar petani mitra untuk owner."""
+    return jsonify({"petani": database.list_petani()})
+
+
+@app.post("/api/master-data/petani")
+@require_auth(["owner"])
+def api_add_petani():
+    """Tambah petani mitra baru."""
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("name", "")).strip()
+    if not name:
+        return jsonify({"error": "Nama petani wajib diisi"}), 400
+    village = str(payload.get("village", ""))
+    phone = str(payload.get("phone", ""))
+    petani = database.add_petani(name, village, phone)
+    return jsonify({"petani": petani}), 201
+
+
+@app.delete("/api/master-data/petani/<petani_id>")
+@require_auth(["owner"])
+def api_delete_petani(petani_id: str):
+    """Hapus petani mitra."""
+    deleted = database.delete_petani(petani_id)
+    if not deleted:
+        return jsonify({"error": "Petani tidak ditemukan"}), 404
+    return jsonify({"deleted_id": petani_id})
 
 
 @app.get("/api/measurements")
@@ -155,6 +397,7 @@ def api_measurements():
 
 
 @app.delete("/api/measurements/<int:measurement_id>")
+@require_auth(["supervisor", "owner"])
 def api_delete_measurement(measurement_id: int):
     deleted = database.delete_measurement(measurement_id)
     if not deleted:
@@ -164,6 +407,7 @@ def api_delete_measurement(measurement_id: int):
 
 
 @app.post("/api/measurements/bulk-delete")
+@require_auth(["supervisor", "owner"])
 def api_bulk_delete_measurements():
     payload = request.get_json(silent=True) or {}
     ids = payload.get("ids", [])
@@ -183,6 +427,7 @@ def api_bulk_delete_measurements():
 
 
 @app.delete("/api/measurements")
+@require_auth(["owner"])
 def api_reset_measurements():
     deleted_count = database.reset_all_measurements()
     debug_logger.add(

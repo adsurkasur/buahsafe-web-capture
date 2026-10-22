@@ -17,6 +17,12 @@ class TestApp(unittest.TestCase):
         self.db_patcher.start()
         database.initialize()
         self.client = flask_app.app.test_client()
+        self.op_token = database.create_session_token("u-op-1", "operator")
+        self.spv_token = database.create_session_token("u-sv-1", "supervisor")
+        self.owner_token = database.create_session_token("u-ow-1", "owner")
+        self.op_headers = {"Authorization": f"Bearer {self.op_token}"}
+        self.spv_headers = {"Authorization": f"Bearer {self.spv_token}"}
+        self.owner_headers = {"Authorization": f"Bearer {self.owner_token}"}
 
     def tearDown(self):
         self.db_patcher.stop()
@@ -48,10 +54,10 @@ class TestApp(unittest.TestCase):
 
     def test_scan_fruit_id_validation(self):
         # Invalid fruit_id
-        response = self.client.post("/api/scan", json={"fruit_id": ""})
+        response = self.client.post("/api/scan", json={"fruit_id": ""}, headers=self.op_headers)
         self.assertEqual(response.status_code, 400)
 
-        response = self.client.post("/api/scan", json={"fruit_id": "$$INVALID$$"})
+        response = self.client.post("/api/scan", json={"fruit_id": "$$INVALID$$"}, headers=self.op_headers)
         self.assertEqual(response.status_code, 400)
 
     def test_scan_success_flow(self):
@@ -78,7 +84,7 @@ class TestApp(unittest.TestCase):
         }
         with patch.object(flask_app.device, "scan", return_value=mock_reading), \
                 patch.object(flask_app.device, "notify_saved") as mock_notify:
-            response = self.client.post("/api/scan", json={"fruit_id": "JAMBU_001"})
+            response = self.client.post("/api/scan", json={"fruit_id": "JAMBU_001"}, headers=self.op_headers)
             self.assertEqual(response.status_code, 200)
             data = response.get_json()
             self.assertIn("measurement", data)
@@ -91,9 +97,20 @@ class TestApp(unittest.TestCase):
             # LCD bisa sinkron, bukan pakai counter lokal firmware.
             mock_notify.assert_called_once_with(measurement["scan_no"])
 
+    def test_scan_ml_failure_never_defaults_to_normal(self):
+        reading = {"scan_no": 1, **{key: 1.0 for key in CHANNEL_KEYS}}
+        with patch.object(flask_app.device, "scan", return_value=reading),                 patch.object(flask_app.device, "notify_saved"),                 patch.object(flask_app.predictor, "predict", side_effect=RuntimeError("model rusak")):
+            response = self.client.post("/api/scan", json={"fruit_id": "JAMBU_002"}, headers=self.op_headers)
+        self.assertEqual(response.status_code, 503)
+        data = response.get_json()
+        self.assertNotIn("prediction", data)
+        self.assertIn("pemeriksaan manual", data["error"])
+        # Spektrum tetap tersimpan, tanpa putusan
+        self.assertEqual(database.list_measurements()[0]["prediction"], "")
+
     def test_scan_device_error_handled(self):
         with patch.object(flask_app.device, "scan", side_effect=DeviceError("AS7265X not ready")):
-            response = self.client.post("/api/scan", json={"fruit_id": "JAMBU_001"})
+            response = self.client.post("/api/scan", json={"fruit_id": "JAMBU_001"}, headers=self.op_headers)
             self.assertEqual(response.status_code, 503)
             data = response.get_json()
             self.assertIn("error", data)
@@ -135,6 +152,10 @@ class TestApp(unittest.TestCase):
             "scan_no",
             *CHANNEL_KEYS,
             "label",
+            "diameter_cm",
+            "rotasi_sensor",
+            "rotasi_buah",
+            "jarak_cm",
         ]
         self.assertEqual(header, expected_header)
         data_row = lines[1].split(",")
@@ -166,14 +187,14 @@ class TestApp(unittest.TestCase):
     def test_delete_measurement_endpoint(self):
         inserted = database.insert_measurement("JAMBU_DEL", self._sample_reading())
 
-        response = self.client.delete(f"/api/measurements/{inserted['id']}")
+        response = self.client.delete(f"/api/measurements/{inserted['id']}", headers=self.spv_headers)
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data["deleted_id"], inserted["id"])
         self.assertEqual(data["summary"]["total_scans"], 0)
 
         # Deleting again -> 404
-        response = self.client.delete(f"/api/measurements/{inserted['id']}")
+        response = self.client.delete(f"/api/measurements/{inserted['id']}", headers=self.spv_headers)
         self.assertEqual(response.status_code, 404)
 
     def test_bulk_delete_measurement_endpoint(self):
@@ -183,7 +204,7 @@ class TestApp(unittest.TestCase):
         ]
 
         response = self.client.post(
-            "/api/measurements/bulk-delete", json={"ids": ids[:2]}
+            "/api/measurements/bulk-delete", json={"ids": ids[:2]}, headers=self.spv_headers
         )
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
@@ -191,21 +212,21 @@ class TestApp(unittest.TestCase):
         self.assertEqual(data["summary"]["total_scans"], 1)
 
         # Empty list -> 400
-        response = self.client.post("/api/measurements/bulk-delete", json={"ids": []})
+        response = self.client.post("/api/measurements/bulk-delete", json={"ids": []}, headers=self.spv_headers)
         self.assertEqual(response.status_code, 400)
 
     def test_reset_measurements_endpoint(self):
         for i in range(1, 4):
             database.insert_measurement(f"JAMBU_{i}", self._sample_reading(i))
 
-        response = self.client.delete("/api/measurements")
+        response = self.client.delete("/api/measurements", headers=self.owner_headers)
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertEqual(data["deleted_count"], 3)
         self.assertEqual(data["summary"]["total_scans"], 0)
 
         # Database sudah bersih -- reset lagi harus tetap aman (bukan error).
-        response = self.client.delete("/api/measurements")
+        response = self.client.delete("/api/measurements", headers=self.owner_headers)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["deleted_count"], 0)
 
