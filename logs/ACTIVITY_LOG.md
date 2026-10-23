@@ -1,5 +1,15 @@
 # Activity Log
 
+### [2026-10-23 15:55] [Antigravity]
+- **Goal**: Implementasi mode perangkat ESP32 WiFi (long-poll & submit API) dan firmware Arduino WiFi untuk pemindai jarak jauh.
+- **Actions**:
+  - Mengembangkan `wifi_device.py` dengan antrean perintah long-poll dan penyerahan hasil scan aman.
+  - Menambahkan endpoint `/api/device/poll` dan `/api/device/result` di `app.py` yang diproteksi kunci perangkat `X-Device-Key`.
+  - Menambahkan firmware ESP32 WiFi di `buahsafe_wifi/` (`buahsafe_wifi.ino`, `config.example.h`, `root_ca.h`).
+  - Menambahkan tes `tests/test_wifi_production.py` dan mengabaikan `buahsafe_wifi/config.h` di `.gitignore`.
+- **Files**: `wifi_device.py`, `app.py`, `database.py`, `requirements.txt`, `.gitignore`, `buahsafe_wifi/`, `tests/test_wifi_production.py`, `logs/ACTIVITY_LOG.md`.
+- **Verification**: 68 tests lulus (100% OK dalam 13.5s).
+
 ### [2026-10-23 00:25] [Claude Code]
 - **Goal**: Audit kesiapan produksi backend sebagai pasangan `buahsafe-client` dan perbaikan temuan keamanan/integritas.
 - **Actions**:

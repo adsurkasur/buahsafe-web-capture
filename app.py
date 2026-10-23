@@ -7,6 +7,7 @@ import logging
 import os
 import platform
 import re
+import secrets
 import sys
 import traceback
 from functools import wraps
@@ -17,6 +18,7 @@ from flask import Flask, Response, g, jsonify, render_template, request
 import database
 import predictor
 from _version import __version__
+from wifi_device import WifiDevice
 from serial_device import (
     CHANNEL_KEYS,
     BuahSafeDevice,
@@ -26,7 +28,8 @@ from serial_device import (
 
 # Konfigurasi standard Python logging dengan format yang jelas dan mudah dibaca
 logging.basicConfig(
-    level=logging.DEBUG,
+    # Produksi: BUAHSAFE_LOG_LEVEL=INFO supaya journald di flash tidak dibanjiri DEBUG
+    level=os.environ.get("BUAHSAFE_LOG_LEVEL", "DEBUG").upper(),
     format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
     datefmt="%H:%M:%S",
     stream=sys.stdout,
@@ -34,7 +37,11 @@ logging.basicConfig(
 logger = logging.getLogger("buahsafe.server")
 
 app = Flask(__name__)
-device = BuahSafeDevice()
+PRODUCTION = os.environ.get("BUAHSAFE_ENV", "").lower() == "production"
+# serial (bawaan): ESP32 di USB komputer ini. wifi: ESP32 di mitra, long-poll ke server.
+DEVICE_MODE = os.environ.get("BUAHSAFE_DEVICE_MODE", "serial").lower()
+DEVICE_KEY = os.environ.get("BUAHSAFE_DEVICE_KEY", "")
+device = WifiDevice(os.environ.get("BUAHSAFE_DEVICE_ID", "BSF-001")) if DEVICE_MODE == "wifi" else BuahSafeDevice()
 FRUIT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,30}$")
 VALID_LABELS = {"", "normal", "anomali"}
 VALID_ROTASI = {"", "A", "B", "C", "D"}
@@ -83,9 +90,32 @@ def require_auth(allowed_roles: list[str] | tuple[str, ...] | None = None):
     return decorator
 
 
+# Di produksi server terbuka ke internet (Cloudflare Tunnel): endpoint warisan dasbor
+# akuisisi lokal yang tadinya tanpa token ikut diwajibkan login di sini.
+PUBLIC_PATHS = {"/api/auth/login", "/api/auth/logout", "/api/device/poll", "/api/device/result"}
+
+
+@app.before_request
+def enforce_production_auth():
+    if not PRODUCTION or request.method == "OPTIONS" or request.path in PUBLIC_PATHS:
+        return None
+    if request.path == "/":
+        # Dasbor akuisisi USB lokal tidak dilayani di server produksi
+        return jsonify({"error": "Halaman atau endpoint tidak ditemukan"}), 404
+    if not (request.path.startswith("/api/") or request.path == "/export.csv"):
+        return None
+    session = database.validate_session_token(_get_bearer_token() or "")
+    if not session:
+        return jsonify({"error": "Sesi tidak ditemukan. Silakan masuk terlebih dahulu."}), 401
+    g.current_user = session
+    if request.method != "GET" and session.get("role") == "operator" and request.path != "/api/scan":
+        return jsonify({"error": "Akses ditolak untuk peran operator."}), 403
+    return None
+
+
 @app.before_request
 def log_request_info():
-    if request.path != "/api/debug" and not request.path.startswith("/static"):
+    if request.path not in ("/api/debug", "/api/device/poll") and not request.path.startswith("/static"):
         debug_logger.add(
             "DEBUG",
             "API",
@@ -332,7 +362,47 @@ def api_delete_user(user_id: str):
 @app.get("/api/devices")
 def api_devices():
     """Daftar status armada pemindai BuahSafe."""
-    return jsonify({"devices": database.list_devices()})
+    devices = database.list_devices()
+    if DEVICE_MODE == "wifi":
+        # Status alat WiFi diambil dari detak long-poll, bukan kolom DB yang bisa basi
+        for d in devices:
+            if d["id"] == device.device_id:
+                d["status"] = "online" if device.connected else "offline"
+    return jsonify({"devices": devices})
+
+
+def _device_authorized() -> bool:
+    key = request.headers.get("X-Device-Key", "")
+    return bool(DEVICE_KEY) and secrets.compare_digest(key.encode(), DEVICE_KEY.encode())
+
+
+@app.get("/api/device/poll")
+def api_device_poll():
+    """Long-poll ESP32 (mode WiFi): tunggu perintah scan hingga ~10 detik."""
+    if DEVICE_MODE != "wifi":
+        return jsonify({"error": "Server tidak berjalan dalam mode WiFi"}), 404
+    if not _device_authorized():
+        return jsonify({"error": "Kunci perangkat tidak valid"}), 401
+    command = device.poll({k: request.args.get(k) for k in ("fw", "rssi", "ip")})
+    if command is None:
+        return "", 204
+    return jsonify(command)
+
+
+@app.post("/api/device/result")
+def api_device_result():
+    """Hasil scan dari ESP32: {"job", "line": "DATA,..."} atau {"job", "error"}."""
+    if DEVICE_MODE != "wifi":
+        return jsonify({"error": "Server tidak berjalan dalam mode WiFi"}), 404
+    if not _device_authorized():
+        return jsonify({"error": "Kunci perangkat tidak valid"}), 401
+    payload = request.get_json(silent=True) or {}
+    accepted, scan_no = device.submit(
+        str(payload.get("job", "")), payload.get("line"), payload.get("error")
+    )
+    if not accepted:
+        return jsonify({"ok": False, "error": "Job kedaluwarsa"}), 409
+    return jsonify({"ok": True, "scan_no": scan_no})
 
 
 @app.get("/api/analytics")
@@ -595,6 +665,9 @@ def handle_general_exception(error: Exception):
     tb = traceback.format_exc()
     debug_logger.add("ERROR", "SERVER", f"Unhandled exception: {error}", extra={"traceback": tb})
     logger.exception("Unhandled server exception:")
+    if PRODUCTION:
+        # Traceback hanya di log server; jangan bocorkan path/kode ke klien publik
+        return jsonify({"error": "Terjadi galat di server. Hubungi admin BuahSafe."}), 500
     return jsonify({
         "error": f"Server Error: {error}",
         "details": {"traceback": tb, "type": type(error).__name__},

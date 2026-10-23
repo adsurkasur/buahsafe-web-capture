@@ -1,2 +1,10 @@
+# Python 3.14. Versi ML DIKUNCI: models/buahsafe_model_svm_6ch.joblib dipickle dengan
+# scikit-learn 1.9.0; versi lain bisa gagal memuat atau memberi hasil berbeda.
 Flask==3.1.1
 pyserial==3.5
+numpy==2.5.2
+scipy==1.18.1
+scikit-learn==1.9.0
+joblib==1.5.3
+# Server produksi Linux (mode WiFi). Wajib 1 worker: state perangkat ada di memori proses.
+gunicorn==26.2.0; sys_platform != "win32"

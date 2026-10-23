@@ -237,8 +237,6 @@ def _init_auxiliary_tables(connection: sqlite3.Connection) -> None:
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             [
                 ("BSF-001", "Meja Sortasi A", "Lantai Produksi", "online", now_iso, 0, "v1.2.4", now_iso),
-                ("BSF-002", "Meja Sortasi B", "Lantai Produksi", "idle", now_iso, 0, "v1.2.4", now_iso),
-                ("BSF-003", "Gudang Utama", "Gudang", "offline", now_iso, 0, "v1.1.9", now_iso),
             ],
         )
 

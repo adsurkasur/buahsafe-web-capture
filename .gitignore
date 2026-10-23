@@ -7,3 +7,6 @@ build/
 *.log
 flask_log*.txt
 .fuse_hidden*
+
+# Rahasia firmware WiFi (kunci perangkat, sandi hotspot setup)
+buahsafe_wifi/config.h
