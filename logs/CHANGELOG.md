@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - 2026-10-23 (server WiFi)
+### Added
+- Mode perangkat WiFi (`BUAHSAFE_DEVICE_MODE=wifi`) dengan endpoint `/api/device/poll` dan `/api/device/result`.
+- Firmware `buahsafe_wifi/` untuk ESP32 WiFi + HTTPS + WiFiManager.
+- Mode produksi `BUAHSAFE_ENV=production`: semua API wajib login, traceback disembunyikan.
+- Panduan `docs/DEPLOY_SERVER_WIFI.md`.
+
+### Changed
+- `requirements.txt` kini lengkap dan dikunci untuk Python 3.14 (sebelumnya hanya Flask dan pyserial).
+- Model ML dimuat saat server start.
+- DB baru hanya berisi perangkat BSF-001.
+
 ## [Unreleased] - 2026-10-23
 ### Security
 - CORS dibatasi ke `BUAHSAFE_CORS_ORIGINS` (sebelumnya `*`).

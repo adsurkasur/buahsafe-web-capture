@@ -1,5 +1,13 @@
 # Decision Log (Architecture Decision Records)
 
+### [DEC-006] ESP32 WiFi dengan Long-Poll HTTPS ke Server Terpisah
+- **Date**: 2026-10-23
+- **Status**: Accepted
+- **Context**: Alat sortasi dipasang di mitra, server ML di HP t530 pemilik. Protokol USB serial tidak bisa menjangkau server jarak jauh, dan ESP32 di balik NAT mitra tidak bisa dihubungi dari luar.
+- **Decision**: ESP32 melakukan long-poll HTTPS (`/api/device/poll`, tunggu maksimal 10 s) lewat Cloudflare Tunnel yang sudah ada, lalu mengirim baris `DATA,...` yang sama dengan protokol serial ke `/api/device/result`. Server menyimpan antrean satu scan di memori proses (wajib 1 worker gunicorn). Perangkat diautentikasi dengan kunci bersama `X-Device-Key`. WiFi mitra diatur lewat portal WiFiManager tanpa flashing ulang.
+- **Alternatives**: MQTT broker (komponen tambahan dan RAM di server yang sudah padat); WebSocket (tidak perlu untuk satu perintah per beberapa detik); jembatan USB di mitra (perangkat tambahan per mitra); polling pendek tiap 1 s (handshake dan trafik berlebih).
+- **Consequences**: Satu set perangkat didukung. Banyak perangkat memerlukan antrean per `device_id` dan kunci per perangkat. Mode USB tetap tersedia untuk akuisisi dataset.
+
 ### [DEC-005] Gagal-Aman pada Putusan Sortasi, Isolasi DB Uji, dan CORS Allowlist
 - **Date**: 2026-10-23
 - **Status**: Accepted

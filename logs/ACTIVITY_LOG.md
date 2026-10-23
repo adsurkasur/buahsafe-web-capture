@@ -1,5 +1,18 @@
 # Activity Log
 
+### [2026-10-23 16:30] [Claude Code]
+- **Goal**: Menjalankan BuahSafe di server HP t530 Thin Client (`adsur@192.168.1.10`) dengan ESP32 di mitra tersambung lewat WiFi; production ready untuk satu set perangkat.
+- **Actions**:
+  - `wifi_device.py` (baru): transport WiFi berbasis long-poll dengan antarmuka sama dengan `BuahSafeDevice`; endpoint `GET /api/device/poll` dan `POST /api/device/result` berkunci `X-Device-Key`.
+  - `app.py`: `BUAHSAFE_DEVICE_MODE`, `BUAHSAFE_ENV=production` (semua API wajib login kecuali login/logout/endpoint perangkat; operator tidak boleh mengubah data selain scan; traceback disembunyikan; `/` dimatikan), `BUAHSAFE_LOG_LEVEL`, status perangkat live di `/api/devices`, model dimuat saat start (muat-pertama dari HDD 13,8 s membuat scan pertama melewati batas ack).
+  - `database.py`: DB baru hanya berisi perangkat nyata BSF-001 (BSF-002/003 contoh dihapus dari seed).
+  - `requirements.txt`: Flask, numpy 2.5.2, scipy 1.18.1, scikit-learn 1.9.0 (dikunci sesuai pickle model), joblib, gunicorn 26.2.0 (Linux).
+  - Firmware `buahsafe_wifi/` (baru): WiFiManager (hotspot `BuahSafe-Setup`), HTTPS dengan root CA GTS/ISRG/SSL.com, long-poll, LCD status, watchdog 45 s. `config.h` rahasia diabaikan Git.
+  - Server: agrocer dihentikan, diarsip ke `/srv/hdd1/archive/agrocer-20261023.tar.gz` (termasuk `sensor.db`) lalu dihapus; ingress `agrocermut` diganti `buahsafe-api.adsurkasur.my.id`; layanan `buahsafe.service` (gunicorn 1 worker, `MemoryMax=450M`, `ProtectSystem=strict`); kode, venv, dan DB di HDD; sandi akun seed diganti acak (`/etc/buahsafe/initial-credentials.txt`); cache npm/pip/go/apt dan snap nonaktif dibersihkan (flash 7,2 -> 8,9 GB bebas); journald dibatasi 200 MB.
+  - Panduan `docs/DEPLOY_SERVER_WIFI.md`.
+- **Files Modified**: `app.py`, `database.py`, `requirements.txt`, `wifi_device.py` (baru), `tests/test_wifi_production.py` (baru), `buahsafe_wifi/{buahsafe_wifi.ino,root_ca.h,config.example.h}` (baru), `docs/DEPLOY_SERVER_WIFI.md` (baru), `.gitignore`, `logs/*`.
+- **Verification**: 68 unit test (termasuk 4 test WiFi/produksi), 9 auth, 6 E2E lulus; `python wifi_device.py` swa-uji OK. E2E lewat internet dengan ESP32 tiruan: kunci salah 401, alat offline 503 dengan pesan jelas, scan ANOMALI 71,7% dalam 3,25 s, ack `scan_no` sampai ke perangkat, operator ubah label 403, record uji dihapus. Di t530: inferensi 1,29 ms/scan, layanan 106 MB RAM, RAM tersedia 1,24 GB. Firmware belum diuji pada ESP32 fisik.
+
 ### [2026-10-23 15:55] [Antigravity]
 - **Goal**: Implementasi mode perangkat ESP32 WiFi (long-poll & submit API) dan firmware Arduino WiFi untuk pemindai jarak jauh.
 - **Actions**:

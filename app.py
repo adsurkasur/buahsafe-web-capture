@@ -56,6 +56,9 @@ CORS_ORIGINS = {
 }
 
 database.initialize()
+# Muat model saat start: muat-pertama scikit-learn dari HDD server bisa >10 s dan
+# membuat scan pertama melewati batas tunggu ESP32/klien.
+predictor.load_model()
 atexit.register(device.disconnect)
 
 
