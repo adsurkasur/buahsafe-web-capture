@@ -1,0 +1,14 @@
+[Unit]
+Description=Cadangan harian database BuahSafe
+
+[Service]
+Type=oneshot
+User=adsur
+Group=adsur
+EnvironmentFile=/etc/buahsafe/buahsafe.env
+ExecStart=/srv/hdd1/buahsafe/venv/bin/python /srv/hdd1/buahsafe/app/deploy/backup_db.py
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+# Baca DB perlu akses tulis ke berkas kunci SQLite di folder data
+ReadWritePaths=/srv/hdd1/backups/buahsafe /srv/hdd1/buahsafe/data

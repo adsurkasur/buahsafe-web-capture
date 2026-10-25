@@ -1,6 +1,6 @@
 """BuahSafe Spectral Machine Learning Predictor Service.
 
-Loads the trained 6-channel SVM RBF model and performs real-time classification
+Loads the trained model (channels + anomaly threshold from the artifact) and performs real-time classification
 of AS7265x spectral scans into 'NORMAL' or 'ANOMALI' with confidence estimation.
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ import numpy as np
 logger = logging.getLogger("buahsafe.predictor")
 
 ROOT = Path(__file__).resolve().parent
-MODEL_PATH = ROOT / "models" / "buahsafe_model_svm_6ch.joblib"
+MODEL_PATH = ROOT / "models" / "buahsafe_model.joblib"  # dibuat oleh ml/evaluate_models.py
 
 # 6 kanal NIR & red-edge paling diskriminatif hasil seleksi fitur Monev 3
 CH6 = ["nm610", "nm680", "nm730", "nm760", "nm810", "nm860"]
@@ -52,71 +52,72 @@ def load_model() -> dict[str, Any] | None:
         return None
 
 
-def extract_features(data: Mapping[str, Any] | Sequence[float]) -> list[float]:
-    """Ekstrak nilai 6 kanal spektral dari dict kanal atau list angka."""
-    if isinstance(data, Mapping):
-        # Dict dengan key seperti 'nm610' dsb.
-        values: list[float] = []
-        for ch in CH6:
-            if ch not in data:
-                raise ValueError(f"Kanal spektral wajib '{ch}' tidak ditemukan dalam data")
-            val = float(data[ch])
-            if np.isnan(val) or np.isinf(val):
-                raise ValueError(f"Nilai kanal '{ch}' tidak valid (NaN/Inf): {val}")
-            values.append(val)
-        return values
+def model_channels(artifact: dict[str, Any] | None = None) -> list[str]:
+    """Kanal yang dibutuhkan model aktif (artefak lama tanpa 'channels' = 6 kanal)."""
+    artifact = artifact if artifact is not None else load_model()
+    return list((artifact or {}).get("channels") or CH6)
 
+
+def extract_features(data: Mapping[str, Any] | Sequence[float], channels: Sequence[str] = CH6) -> list[float]:
+    """Ambil nilai kanal yang diminta dari dict kanal ('nm610', ...) atau list 18 nilai."""
     if isinstance(data, (list, tuple)):
-        # Jika panjang 18 kanal penuh, ambil indeks kanal 6
         if len(data) == 18:
-            idx_map = {name: i for i, name in enumerate(ALL_18_CHANNELS)}
-            return [float(data[idx_map[ch]]) for ch in CH6]
-        # Jika tepat 6 kanal
-        if len(data) == 6:
-            return [float(v) for v in data]
-        raise ValueError(f"Jumlah kanal tidak sesuai: diterima {len(data)}, diharapkan 6 atau 18")
+            data = dict(zip(ALL_18_CHANNELS, data))
+        elif len(data) == len(channels):
+            data = dict(zip(channels, data))
+        else:
+            raise ValueError(f"Jumlah kanal tidak sesuai: diterima {len(data)}, diharapkan {len(channels)} atau 18")
+    if not isinstance(data, Mapping):
+        raise TypeError(f"Tipe data spektral tidak didukung: {type(data).__name__}")
 
-    raise TypeError(f"Tipe data spektral tidak didukung: {type(data).__name__}")
+    values: list[float] = []
+    for ch in channels:
+        if ch not in data:
+            raise ValueError(f"Kanal spektral wajib '{ch}' tidak ditemukan dalam data")
+        val = float(data[ch])
+        if np.isnan(val) or np.isinf(val):
+            raise ValueError(f"Nilai kanal '{ch}' tidak valid (NaN/Inf): {val}")
+        values.append(val)
+    return values
 
 
 def predict(spectral_data: Mapping[str, Any] | Sequence[float]) -> dict[str, Any]:
     """Lakukan inferensi klasifikasi spektral buah.
 
+    Kanal dan ambang probabilitas anomali dibaca dari artefak model
+    (ml/evaluate_models.py). Ambang < 0,5 sengaja dipilih agar lebih sedikit
+    buah busuk yang lolos ke keranjang hijau.
+
     Mengembalikan:
       - result: 'NORMAL' atau 'ANOMALI'
-      - confidence: tingkat keyakinan (0 - 100%)
+      - confidence: probabilitas kelas yang diputuskan (0 - 100%)
       - probabilities: probabilitas normal vs anomali
-      - key_features: nilai 6 kanal yang dievaluasi
+      - threshold: ambang anomali yang dipakai
+      - key_features: nilai kanal yang dievaluasi
     """
-    x6 = extract_features(spectral_data)
     artifact = load_model()
-
     if artifact is None or "pipeline" not in artifact:
         # Tanpa model terlatih tidak ada putusan: heuristik tebakan di lantai sortasi
         # akan mengirim buah ke keranjang yang salah tanpa disadari operator.
         raise RuntimeError(f"Model ML tidak tersedia atau rusak: {MODEL_PATH.name}")
 
-    pipeline = artifact["pipeline"]
-    X = np.array([x6])
-
-    # Prediksi probabilitas
-    prob = pipeline.predict_proba(X)[0]
-    p_norm = float(prob[0])
-    p_anom = float(prob[1])
-
-    is_anomali = p_anom >= 0.5
-    result = "ANOMALI" if is_anomali else "NORMAL"
-    confidence = max(p_norm, p_anom) * 100.0
+    channels = model_channels(artifact)
+    features = extract_features(spectral_data, channels)
+    threshold = float(artifact.get("threshold", 0.5))
+    prob = artifact["pipeline"].predict_proba(np.array([features]))[0]
+    p_norm, p_anom = float(prob[0]), float(prob[1])
+    is_anomali = p_anom >= threshold
 
     return {
-        "result": result,
-        "confidence": round(confidence, 1),
+        "result": "ANOMALI" if is_anomali else "NORMAL",
+        "confidence": round((p_anom if is_anomali else p_norm) * 100.0, 1),
         "probabilities": {
             "normal": round(p_norm * 100.0, 1),
             "anomali": round(p_anom * 100.0, 1),
         },
-        "key_features": {ch: round(val, 4) for ch, val in zip(CH6, x6)},
-        "model_status": "svm_rbf_production",
+        "threshold": threshold,
+        "key_features": {ch: round(val, 4) for ch, val in zip(channels, features)},
+        "model_status": artifact.get("model_name", "svm_rbf") + " " + artifact.get("channel_set", "6 kanal"),
         "model_metrics": artifact.get("metrics", {}),
     }
 
@@ -124,6 +125,5 @@ def predict(spectral_data: Mapping[str, Any] | Sequence[float]) -> dict[str, Any
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     print("Menguji modul predictor...")
-    test_normal = {"nm610": 2.5, "nm680": 2.1, "nm730": 6.8, "nm760": 0.5, "nm810": 1.2, "nm860": 0.9}
-    res = predict(test_normal)
+    res = predict([1.5] * 18)
     print("Hasil Prediksi Uji:", res)

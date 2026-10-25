@@ -788,6 +788,12 @@ def list_devices() -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def set_device_name(device_id: str, name: str) -> bool:
+    with database_connection() as connection:
+        cursor = connection.execute("UPDATE devices SET name = ? WHERE id = ?", (name, device_id))
+    return cursor.rowcount > 0
+
+
 def update_device_status(device_id: str, status: str) -> bool:
     with database_connection() as connection:
         cursor = connection.execute(

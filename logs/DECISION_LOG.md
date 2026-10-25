@@ -1,5 +1,13 @@
 # Decision Log (Architecture Decision Records)
 
+### [DEC-007] Model 18 Kanal Dipilih Lewat Nested CV + Holdout, Ambang Berbasis Recall
+- **Date**: 2026-10-25
+- **Status**: Accepted (menggantikan pilihan SVM 6 kanal C=100 pada DEC-003)
+- **Context**: Model 6 kanal dipilih tanpa perbandingan setara dengan 18 kanal, dan tuning lama memakai fold yang sama dengan evaluasi. Di meja sortasi, buah busuk yang lolos lebih mahal daripada alarm palsu.
+- **Decision**: 13 buah disisihkan sebagai holdout; enam kandidat (LR/SVM/RF x 6/18 kanal) dinilai dengan validasi silang bersarang per buah; pilih F1 tertinggi; ambang anomali = ambang tertinggi dengan recall out-of-fold >= 0,80. Model demo dilatih 80% buah agar ESP32 virtual memutar buah yang tidak pernah dilihat model; dilatih ulang 100% (`--full`) saat alat asli dipasang. Kanal dan ambang disimpan di artefak, bukan di kode.
+- **Alternatives**: Tetap SVM 6 kanal (F1 0,769, selisih di dalam simpangan baku; tetap layak); memilih menurut akurasi atau AUC saja (mengabaikan biaya buah busuk lolos).
+- **Consequences**: Recall per scan di holdout 0,625, di bawah target; perataan beberapa sisi per buah (12/13 benar) menjadi saran utama. Inferensi 16 ms/scan di t530 (lebih berat dari 1,3 ms model lama, tetap jauh di bawah pemanasan lampu 3 s).
+
 ### [DEC-006] ESP32 WiFi dengan Long-Poll HTTPS ke Server Terpisah
 - **Date**: 2026-10-23
 - **Status**: Accepted

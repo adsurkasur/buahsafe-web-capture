@@ -56,6 +56,9 @@ CORS_ORIGINS = {
 }
 
 database.initialize()
+if DEVICE_MODE == "wifi" and os.environ.get("BUAHSAFE_DEVICE_LABEL"):
+    # Mis. "Meja Sortasi (Simulator)" agar data demo tidak tertukar dengan alat asli
+    database.set_device_name(device.device_id, os.environ["BUAHSAFE_DEVICE_LABEL"])
 # Muat model saat start: muat-pertama scikit-learn dari HDD server bisa >10 s dan
 # membuat scan pertama melewati batas tunggu ESP32/klien.
 predictor.load_model()
@@ -211,7 +214,7 @@ def api_scan():
         debug_logger.add("WARN", "API", f"Scan dibatalkan: {err_msg}")
         return jsonify({"error": err_msg}), 400
 
-    reading = device.scan()
+    reading = device.scan(fruit_id) if isinstance(device, WifiDevice) else device.scan()
 
     # Eksekusi inferensi Machine Learning SVM (RBF)
     try:

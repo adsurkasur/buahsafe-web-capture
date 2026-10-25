@@ -1,0 +1,25 @@
+[Unit]
+Description=BuahSafe ML API (Flask + SVM, ESP32 via WiFi)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=adsur
+Group=adsur
+WorkingDirectory=/srv/hdd1/buahsafe/app
+EnvironmentFile=/etc/buahsafe/buahsafe.env
+# 1 worker WAJIB: antrean scan ESP32 ada di memori proses. Thread melayani long-poll.
+ExecStart=/srv/hdd1/buahsafe/venv/bin/gunicorn --workers 1 --threads 8 --bind 127.0.0.1:5000 --timeout 60 --graceful-timeout 20 --control-socket /run/buahsafe/gunicorn.ctl app:app
+Restart=always
+RestartSec=3
+MemoryHigh=300M
+MemoryMax=450M
+NoNewPrivileges=true
+PrivateTmp=true
+RuntimeDirectory=buahsafe
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/hdd1/buahsafe/data
+
+[Install]
+WantedBy=multi-user.target

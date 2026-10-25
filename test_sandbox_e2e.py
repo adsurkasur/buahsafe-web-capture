@@ -92,45 +92,24 @@ class TestBuahSafeSandbox(unittest.TestCase):
         print("[OK] [Lolos] Autentikasi Multi-Peran (Operator, Supervisor, Owner)")
 
     def test_03_machine_learning_inference_accuracy(self):
-        """Uji inferensi model SVM RBF 6-kanal pada sampel normal dan anomali."""
-        # 1. Sampel Jambu Normal (pola pantulan NIR tinggi pada 730 & 810 nm)
-        normal_spectral = {
-            "nm610": 1.45,
-            "nm680": 1.15,
-            "nm730": 6.10,
-            "nm760": 0.85,
-            "nm810": 2.05,
-            "nm860": 1.25,
-        }
-        res_norm = self.client.post(
-            "/api/predict",
-            data=json.dumps({"spectral": normal_spectral}),
-            content_type="application/json",
-        )
-        self.assertEqual(res_norm.status_code, 200)
-        data_norm = res_norm.get_json()
-        self.assertIn(data_norm["result"], ["NORMAL", "ANOMALI"])
-        self.assertGreater(data_norm["confidence"], 50.0)
-        self.assertEqual(data_norm["model_status"], "svm_rbf_production")
+        """Uji inferensi model produksi pada spektrum NYATA dari buah holdout.
 
-        # 2. Sampel Jambu Anomali / Busuk (penurunan pantulan drastis pada 730 nm)
-        anomali_spectral = {
-            "nm610": 1.85,
-            "nm680": 1.55,
-            "nm730": 3.10,
-            "nm760": 0.60,
-            "nm810": 1.15,
-            "nm860": 0.75,
-        }
-        res_anom = self.client.post(
-            "/api/predict",
-            data=json.dumps({"spectral": anomali_spectral}),
-            content_type="application/json",
-        )
-        self.assertEqual(res_anom.status_code, 200)
-        data_anom = res_anom.get_json()
-        self.assertIn("confidence", data_anom)
-        print(f"[OK] [Lolos] Inferensi Machine Learning (Normal Conf: {data_norm['confidence']}%, Anomali Conf: {data_anom['confidence']}%)")
+        AMAN_017 (sehat) dan BOSOK_004 (busuk) tidak pernah dipakai melatih model demo
+        (ml/holdout_fruits.json); keduanya diputus benar dengan margin lebar.
+        """
+        import csv
+        rows = list(csv.DictReader(open(ROOT / "output/finalised/buahsafe_dataset_gabungan_final.csv", encoding="utf-8-sig")))
+        verdicts = {}
+        for fruit, expected in (("AMAN_017", "NORMAL"), ("BOSOK_004", "ANOMALI")):
+            row = next(r for r in rows if r["fruit_id"] == fruit)
+            spectral = {k: float(v) for k, v in row.items() if k.startswith("nm")}
+            res = self.client.post("/api/predict", json={"spectral": spectral})
+            self.assertEqual(res.status_code, 200)
+            data = res.get_json()
+            self.assertEqual(data["result"], expected, fruit)
+            self.assertIn("threshold", data)
+            verdicts[fruit] = f"{data['result']} {data['confidence']}%"
+        print(f"[OK] [Lolos] Inferensi Machine Learning pada buah holdout: {verdicts}")
 
     def test_04_device_fleet_and_scan_flow(self):
         """Uji pemantauan armada perangkat dan eksekusi alur scan."""

@@ -1,0 +1,23 @@
+[Unit]
+Description=BuahSafe ESP32 virtual (memutar scan buah holdout; matikan saat ESP32 asli dipasang)
+After=buahsafe.service network-online.target
+Wants=network-online.target
+
+[Service]
+User=adsur
+Group=adsur
+WorkingDirectory=/srv/hdd1/buahsafe/app
+EnvironmentFile=/etc/buahsafe/buahsafe.env
+# Lewat Cloudflare Tunnel, jalur jaringannya sama dengan alat asli di mitra
+Environment=BUAHSAFE_SERVER_URL=https://buahsafe-api.adsurkasur.my.id
+ExecStart=/srv/hdd1/buahsafe/venv/bin/python -u esp32_simulator.py
+Restart=always
+RestartSec=5
+MemoryMax=80M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

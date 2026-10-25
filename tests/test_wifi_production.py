@@ -56,6 +56,7 @@ class TestWifiProduction(unittest.TestCase):
                 r = self.client.get("/api/device/poll?fw=2.0.0&rssi=-60", headers=dev_headers)
                 if r.status_code == 200:
                     job = r.get_json()["job"]
+                    seen["fruit_id"] = r.get_json()["fruit_id"]
                     ack = self.client.post("/api/device/result", json={"job": job, "line": DATA_LINE},
                                            headers=dev_headers)
                     seen["ack"] = ack.get_json()
@@ -71,6 +72,7 @@ class TestWifiProduction(unittest.TestCase):
         data = res.get_json()
         self.assertIn(data["prediction"]["result"], ("NORMAL", "ANOMALI"))
         self.assertAlmostEqual(data["measurement"]["nm410"], 20.5)
+        self.assertEqual(seen["fruit_id"], "JB-WIFI-001")  # dipakai esp32_simulator.py
         # ESP32 menerima scan_no sah dari database untuk LCD
         self.assertEqual(seen["ack"]["scan_no"], data["measurement"]["scan_no"])
 

@@ -1,0 +1,19 @@
+{
+  "seed": 42,
+  "fruits": [
+    "AMAN_002",
+    "AMAN_015",
+    "AMAN_017",
+    "AMAN_018",
+    "AMAN_019",
+    "AMAN_027",
+    "AMAN_034",
+    "BOSOK_004",
+    "BOSOK_011",
+    "BOSOK_021",
+    "BOSOK_022",
+    "BOSOK_027",
+    "BOSOK_030"
+  ],
+  "note": "Buah ini tidak dipakai melatih/menyeleksi model demo; hanya untuk uji akhir dan esp32_simulator.py"
+}

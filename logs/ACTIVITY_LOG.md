@@ -1,5 +1,18 @@
 # Activity Log
 
+### [2026-10-25 22:00] [Claude Code]
+- **Goal**: Pengujian penuh BuahSafe dengan ESP32 virtual di mini PC, evaluasi ML yang adil, dan bahan ML untuk laporan akhir.
+- **Actions**:
+  - `ml/evaluate_models.py` (baru): holdout 13 buah (stratifikasi, per buah), validasi silang bersarang (luar 5, dalam 4, StratifiedGroupKFold) untuk LR/SVM/RF x 6/18 kanal, pemilihan F1, ambang anomali dari prediksi out-of-fold (recall >= 0,80), uji sekali di holdout, ekspor `models/buahsafe_model.joblib`; `--full` melatih ulang 100%. Terpilih SVM-RBF 18 kanal (F1 nested 0,785), ambang 0,45; holdout: akurasi 0,702, recall 0,625, AUC 0,809; 12/13 buah benar bila 8 sisi dirata-ratakan.
+  - `predictor.py` membaca kanal dan ambang dari artefak; `export_model.py` dan model 6 kanal lama dihapus.
+  - `esp32_simulator.py` (baru): protokol firmware, memutar scan buah holdout; ID memuat ID holdout -> buah itu; `GAGAL-` -> sensor gagal. Poll kini membawa `fruit_id`; label perangkat dari `BUAHSAFE_DEVICE_LABEL`.
+  - `wifi_device.py`: detak perangkat tidak lagi diperbarui setelah long-poll menunggu (alat mati terdeteksi 10 s lebih cepat; ditemukan saat uji).
+  - `deploy/`: unit systemd API, simulator, backup harian + `backup_db.py` (integrity_check, simpan 14 hari).
+  - `ml/report_materials.py` (baru): 10 gambar 300 dpi, `hasil_ml.xlsx`, `HASIL_ML.md/.docx`, DOCX penjelasan awam di `../bahan-laporan-ml/`.
+  - Server t530: model baru, simulator, backup terpasang; CORS `https://buahsafe.vercel.app`.
+- **Files Modified**: `predictor.py`, `wifi_device.py`, `app.py`, `database.py`, `esp32_simulator.py`, `ml/*`, `deploy/*`, `models/buahsafe_model.joblib`, `tests/test_server_api.py`, `tests/test_wifi_production.py`, `test_sandbox_e2e.py`, `docs/DEPLOY_SERVER_WIFI.md`, `logs/*`; dihapus `export_model.py`, `models/buahsafe_model_svm_6ch.joblib`.
+- **Verification**: 69 unit + 9 auth + 6 E2E + build lulus; `esp32_simulator.py --check`; prediksi server = lokal 20/20; uji peramban di buahsafe.vercel.app 28/28; uji API 15/15; backup + restore lolos. Rincian: `../LAPORAN_UJI_PENUH_2026-10-25.md`.
+
 ### [2026-10-23 16:30] [Claude Code]
 - **Goal**: Menjalankan BuahSafe di server HP t530 Thin Client (`adsur@192.168.1.10`) dengan ESP32 di mitra tersambung lewat WiFi; production ready untuk satu set perangkat.
 - **Actions**:

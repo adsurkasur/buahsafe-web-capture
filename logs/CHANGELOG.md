@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - 2026-10-25
+### Added
+- ESP32 virtual (`esp32_simulator.py`) + `buahsafe-sim.service`.
+- Evaluasi ML adil (`ml/evaluate_models.py`) dan generator bahan laporan (`ml/report_materials.py`).
+- Backup harian database (`deploy/backup_db.py`, `buahsafe-backup.timer`).
+
+### Changed
+- Model produksi: SVM-RBF 18 kanal dengan ambang anomali 0,45 dari artefak (`models/buahsafe_model.joblib`).
+- Respons poll perangkat membawa `fruit_id`; nama perangkat bisa diatur lewat `BUAHSAFE_DEVICE_LABEL`.
+
+### Fixed
+- Alat yang mati di tengah long-poll tidak lagi terhitung hidup 10 detik lebih lama.
+
+### Removed
+- `export_model.py` dan model 6 kanal lama.
+
 ## [Unreleased] - 2026-10-23 (server WiFi)
 ### Added
 - Mode perangkat WiFi (`BUAHSAFE_DEVICE_MODE=wifi`) dengan endpoint `/api/device/poll` dan `/api/device/result`.

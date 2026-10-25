@@ -6,7 +6,7 @@ Status per 2026-10-23: server berjalan di HP t530 Thin Client (`adsur@192.168.1.
 
 ```text
 Mitra                                   Server (HP t530)
-ESP32 + AS7265x --WiFi/HTTPS-->  Cloudflare Tunnel --> gunicorn 127.0.0.1:5000 --> SVM 6 kanal
+ESP32 + AS7265x --WiFi/HTTPS-->  Cloudflare Tunnel --> gunicorn 127.0.0.1:5000 --> SVM 18 kanal
   long-poll /api/device/poll                                  |
   POST /api/device/result                                     +--> SQLite (HDD)
 Peramban operator (Vercel) --HTTPS--> /api/scan, /api/measurements, ...
@@ -98,3 +98,18 @@ arduino-cli upload --fqbn esp32:esp32:esp32 -p COM5 buahsafe_wifi
 | `ERROR AS7265x` | Sensor tidak terbaca | Periksa kabel I2C sensor |
 
 Sertifikat: firmware mempercayai root CA Google Trust Services, Let's Encrypt (ISRG), dan SSL.com (`root_ca.h`). Root paling awal kedaluwarsa 2035-06-04.
+
+## ESP32 virtual, model, dan backup (2026-10-25)
+
+- `buahsafe-sim.service` menjalankan `esp32_simulator.py`: protokol sama dengan firmware, memutar scan nyata dari 13 buah uji independen (`ml/holdout_fruits.json`). ID buah yang memuat ID holdout (mis. `UJI-BOSOK_004`) memutar buah itu; awalan `GAGAL-` mensimulasikan sensor gagal. Perangkat tampil sebagai "Meja Sortasi (Simulator)" lewat `BUAHSAFE_DEVICE_LABEL`.
+- Model: `models/buahsafe_model.joblib` dibuat oleh `ml/evaluate_models.py` (SVM-RBF 18 kanal, ambang anomali 0,45, dilatih 80% buah). Bahan laporan: `ml/report_materials.py` -> `../bahan-laporan-ml/`.
+- `buahsafe-backup.timer` (02.00) menjalankan `deploy/backup_db.py` ke `/srv/hdd1/backups/buahsafe`, simpan 14 hari, dicek `integrity_check`.
+- Berkas unit ada di `deploy/`; pasang dengan `sudo cp deploy/*.service deploy/*.timer /etc/systemd/system/ && sudo systemctl daemon-reload`.
+
+Saat ESP32 asli dipasang di mitra:
+
+```bash
+sudo systemctl disable --now buahsafe-sim
+sudo sed -i 's/^BUAHSAFE_DEVICE_LABEL=.*/BUAHSAFE_DEVICE_LABEL=Meja Sortasi A/' /etc/buahsafe/buahsafe.env
+cd /srv/hdd1/buahsafe/app && ../venv/bin/python ml/evaluate_models.py --full && sudo systemctl restart buahsafe
+```

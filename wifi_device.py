@@ -45,6 +45,7 @@ class WifiDevice:
         self._info: dict[str, Any] = {}
         self._job: str | None = None
         self._job_taken = False
+        self._job_fruit = ""
         self._result: dict[str, Any] | None = None
         self._saved: dict[str, int | None] = {}
 
@@ -77,7 +78,7 @@ class WifiDevice:
     def disconnect(self, keep_error: bool = False) -> None:
         return None
 
-    def scan(self) -> dict[str, float | int]:
+    def scan(self, fruit_id: str = "") -> dict[str, float | int]:
         if not self._scan_lock.acquire(timeout=SCAN_TIMEOUT_S):
             raise DeviceError("Pemindai masih memproses buah sebelumnya. Tunggu sebentar lalu ulangi.")
         try:
@@ -88,7 +89,7 @@ class WifiDevice:
                 )
             job = uuid.uuid4().hex[:12]
             with self._cond:
-                self._job, self._result, self._job_taken = job, None, False
+                self._job, self._result, self._job_taken, self._job_fruit = job, None, False, fruit_id
                 self._cond.notify_all()  # bangunkan long-poll yang sedang menunggu
                 ok = self._cond.wait_for(lambda: self._result is not None, timeout=SCAN_TIMEOUT_S)
                 result, self._job, self._result = self._result, None, None
@@ -119,12 +120,14 @@ class WifiDevice:
         self._info = {"firmware": info.get("fw"), "rssi": info.get("rssi"), "ip": info.get("ip"),
                       "last_poll": datetime.now().isoformat(timespec="seconds")}
         with self._cond:
+            # _last_seen sengaja TIDAK diperbarui setelah menunggu: perangkat yang mati di
+            # tengah long-poll tidak boleh terhitung hidup 10 detik lebih lama.
             self._cond.wait_for(lambda: self._job is not None and not self._job_taken, timeout=POLL_WAIT_S)
-            self._last_seen = time.monotonic()
             if self._job is None or self._job_taken:
                 return None
             self._job_taken = True  # poll ulang tidak boleh memicu scan ganda
-            return {"command": "SCAN", "job": self._job}
+            # fruit_id hanya dipakai esp32_simulator.py; firmware asli mengabaikannya
+            return {"command": "SCAN", "job": self._job, "fruit_id": self._job_fruit}
 
     def submit(self, job: str, line: str | None, error: str | None) -> tuple[bool, int | None]:
         """Terima hasil scan; tunggu sebentar scan_no dari database untuk LCD."""

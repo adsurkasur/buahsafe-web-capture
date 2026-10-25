@@ -1,0 +1,96 @@
+{
+  "model_name": "SVM (RBF)",
+  "channel_set": "18 kanal",
+  "channels": [
+    "nm410",
+    "nm435",
+    "nm460",
+    "nm485",
+    "nm510",
+    "nm535",
+    "nm560",
+    "nm585",
+    "nm610",
+    "nm645",
+    "nm680",
+    "nm705",
+    "nm730",
+    "nm760",
+    "nm810",
+    "nm860",
+    "nm900",
+    "nm940"
+  ],
+  "threshold": 0.45,
+  "recall_target": 0.8,
+  "params": {
+    "clf__C": 100,
+    "clf__gamma": 1
+  },
+  "nested_cv_mean": {
+    "accuracy": 0.7929651162790698,
+    "precision": 0.8045150508406322,
+    "recall": 0.775,
+    "specificity": 0.8122463768115942,
+    "f1": 0.7847461443949313,
+    "roc_auc": 0.8629085144927536
+  },
+  "nested_cv_oof_at_threshold": {
+    "accuracy": 0.785024154589372,
+    "precision": 0.7655502392344498,
+    "recall": 0.8,
+    "specificity": 0.7710280373831776,
+    "f1": 0.78239608801956,
+    "roc_auc": 0.8688317757009346,
+    "tn": 165,
+    "fp": 49,
+    "fn": 40,
+    "tp": 160
+  },
+  "holdout": {
+    "threshold": {
+      "accuracy": 0.7019230769230769,
+      "precision": 0.6976744186046512,
+      "recall": 0.625,
+      "specificity": 0.7678571428571429,
+      "f1": 0.6593406593406593,
+      "roc_auc": 0.808779761904762,
+      "tn": 43,
+      "fp": 13,
+      "fn": 18,
+      "tp": 30
+    },
+    "default_0.5": {
+      "accuracy": 0.7211538461538461,
+      "precision": 0.7317073170731707,
+      "recall": 0.625,
+      "specificity": 0.8035714285714286,
+      "f1": 0.6741573033707865,
+      "roc_auc": 0.808779761904762,
+      "tn": 45,
+      "fp": 11,
+      "fn": 18,
+      "tp": 30
+    }
+  },
+  "dataset": {
+    "scans": 518,
+    "fruits": 65,
+    "dev_fruits": 52,
+    "holdout_fruits": [
+      "AMAN_002",
+      "AMAN_015",
+      "AMAN_017",
+      "AMAN_018",
+      "AMAN_019",
+      "AMAN_027",
+      "AMAN_034",
+      "BOSOK_004",
+      "BOSOK_011",
+      "BOSOK_021",
+      "BOSOK_022",
+      "BOSOK_027",
+      "BOSOK_030"
+    ]
+  }
+}

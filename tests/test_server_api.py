@@ -3,6 +3,7 @@ import json
 import unittest
 from app import app
 import database
+import predictor
 
 
 class TestServerAPI(unittest.TestCase):
@@ -48,15 +49,8 @@ class TestServerAPI(unittest.TestCase):
         self.assertFalse(data.get("ok"))
 
     def test_api_predict_pure_ml(self):
-        # 6 kanal atau 18 kanal dict
-        sample = {
-            "nm610": 1.5,
-            "nm680": 1.2,
-            "nm730": 5.4,
-            "nm760": 0.8,
-            "nm810": 2.1,
-            "nm860": 1.4,
-        }
+        # 18 kanal lengkap seperti yang dikirim firmware
+        sample = {ch: 30.0 for ch in predictor.ALL_18_CHANNELS}
         response = self.client.post(
             "/api/predict",
             data=json.dumps({"spectral": sample}),
@@ -68,6 +62,15 @@ class TestServerAPI(unittest.TestCase):
         self.assertIn(data["result"], ["NORMAL", "ANOMALI"])
         self.assertIn("confidence", data)
         self.assertGreaterEqual(data["confidence"], 0.0)
+
+    def test_predict_uses_artifact_threshold(self):
+        from unittest.mock import patch
+        sample = {ch: 30.0 for ch in predictor.ALL_18_CHANNELS}
+        artifact = predictor.load_model()
+        with patch.dict(artifact, {"threshold": 0.001}):
+            self.assertEqual(predictor.predict(sample)["result"], "ANOMALI")
+        with patch.dict(artifact, {"threshold": 0.999}):
+            self.assertEqual(predictor.predict(sample)["result"], "NORMAL")
 
     def test_api_devices(self):
         response = self.client.get("/api/devices")
