@@ -405,7 +405,7 @@ def flow(steps: list[tuple[str, str]], name: str, title: str, per_row: int = 4) 
 
 flow([("Masuk belt", "Buah diletakkan di conveyor | yang terus berjalan"),
       ("Terdeteksi", "Sensor PIR memicu | lampu halogen menyala"),
-      ("Diukur", "AS7265x membaca cahaya tembus | 18 warna, sekali lewat"),
+      ("Diukur", "AS7265x membaca cahaya | tembus 18 warna, sekali lewat"),
       ("Dikirim", "ESP32 mengirim lewat WiFi | mitra dan internet (HTTPS)"),
       ("Dinilai", "Server mini PC menjalankan | model ML (16 ms)"),
       ("Disimpan", "Hasil masuk database | di server (backup harian)"),
