@@ -226,16 +226,16 @@ anom_f = per_fruit[per_fruit["label"] == "anomali"]
 norm_f = per_fruit[per_fruit["label"] == "normal"]
 top = imp.sort_values("penurunan_auc", ascending=False).head(4)
 
-md = f"""# Bahan hasil machine learning BuahSafe
+md = f"""# Hasil pembelajaran mesin BuahSafe
 
-Dibuat otomatis oleh `buahsafe-web-capture/ml/report_materials.py` dari hasil `ml/evaluate_models.py` (seed 42). Semua angka di berkas ini, `hasil_ml.xlsx`, dan `HASIL_ML.docx` berasal dari sumber yang sama. Ini bahan, bukan naskah bab: tim memilih dan menulis ulang sesuai gaya laporan.
+Dokumen ini dibangkitkan otomatis oleh `buahsafe-web-capture/ml/report_materials.py` dari keluaran `ml/evaluate_models.py` (seed 42). Seluruh angka dalam dokumen ini, `hasil_ml.xlsx`, dan `HASIL_ML.docx` bersumber dari berkas yang sama. Dokumen ini merupakan bahan, bukan naskah bab; tim memilih dan menyesuaikannya dengan gaya laporan.
 
 ## 1. Data
 
-- {res['dataset']['scans']} scan dari {res['dataset']['fruits']} buah jambu kristal ({int((fruits == 'normal').sum())} normal, {int((fruits == 'anomali').sum())} anomali), 8 sisi per buah (rotasi 45°), kecuali satu buah (AMAN_010) yang hanya 6 sisi.
-- Fitur: intensitas transmisi terkalibrasi sensor AS7265x pada 18 kanal 410–940 nm. Label dari pembelahan buah setelah gejala kerusakan muncul.
-- Pembagian per buah, bukan per scan, supaya sisi lain dari buah yang sama tidak bocor ke data uji. {res['dataset']['dev_fruits']} buah ({len(df) - len(hold)} scan) untuk pelatihan dan pemilihan model; {len(res['dataset']['holdout_fruits'])} buah ({len(hold)} scan; {int((hold.groupby('fruit_id')['label'].first() == 'normal').sum())} normal, {int((hold.groupby('fruit_id')['label'].first() == 'anomali').sum())} anomali) disisihkan sebagai **data uji independen** dan baru dipakai sekali di akhir.
-- Pra-pengolahan: standardisasi z-score (StandardScaler) untuk LR dan SVM; RF tanpa standardisasi. Tidak ada smoothing, SNV, MSC, atau Savitzky-Golay.
+- Data terdiri atas {res['dataset']['scans']} pemindaian dari {res['dataset']['fruits']} buah jambu kristal ({int((fruits == 'normal').sum())} normal, {int((fruits == 'anomali').sum())} anomali). Setiap buah dipindai pada 8 sisi dengan rotasi 45°, kecuali satu buah (AMAN_010) yang hanya 6 sisi.
+- Fitur berupa intensitas transmisi terkalibrasi sensor AS7265x pada 18 kanal (410 sampai 940 nm). Label ditetapkan dari hasil pembelahan buah setelah gejala kerusakan muncul.
+- Data dibagi per buah, bukan per pemindaian, agar sisi lain dari buah yang sama tidak masuk ke data uji. Pemisahan kelompok ini mencegah kebocoran data (Kapoor dan Narayanan, 2023; Roberts *et al.*, 2017). Sebanyak {res['dataset']['dev_fruits']} buah ({len(df) - len(hold)} pemindaian) dipakai untuk pelatihan dan pemilihan model, sedangkan {len(res['dataset']['holdout_fruits'])} buah ({len(hold)} pemindaian; {int((hold.groupby('fruit_id')['label'].first() == 'normal').sum())} normal, {int((hold.groupby('fruit_id')['label'].first() == 'anomali').sum())} anomali) disisihkan sebagai **data uji independen** yang hanya dipakai sekali pada tahap akhir.
+- Pra-pengolahan hanya berupa standardisasi z-score (StandardScaler) untuk LR dan SVM; RF dipakai tanpa standardisasi. Penghalusan, SNV, MSC, dan Savitzky-Golay tidak dipakai.
 
 ![Rata-rata spektrum]({figs['spektrum']})
 
@@ -243,13 +243,13 @@ Dibuat otomatis oleh `buahsafe-web-capture/ml/report_materials.py` dari hasil `m
 
 ![PCA]({figs['pca']})
 
-*Gambar B. Proyeksi 518 scan ke dua komponen utama. Kedua kelas bertumpang tindih, sehingga diperlukan pemisah non-linear.*
+*Gambar B. Proyeksi {res['dataset']['scans']} pemindaian pada dua komponen utama. Kedua kelas bertumpang tindih, sehingga diperlukan pemisah nonlinear.*
 
 ## 2. Metode pemilihan model
 
-- Kandidat: Logistic Regression (LR), Support Vector Machine kernel RBF (SVM), dan Random Forest (RF), masing-masing pada 6 kanal (610, 680, 730, 760, 810, 860 nm) dan 18 kanal.
-- Validasi silang bersarang per buah (StratifiedGroupKFold): lipatan luar 5 untuk menilai, lipatan dalam 4 untuk mencari hiperparameter (GridSearchCV, skor F1). Dengan cara ini angka penilaian tidak ikut dipakai saat tuning.
-- Kriteria: F1 tertinggi pada lipatan luar. Ambang probabilitas anomali dipilih dari prediksi out-of-fold sebagai ambang tertinggi yang masih memberi recall anomali ≥ {pct(res['recall_target'])}. Alasannya, buah busuk yang lolos ke keranjang hijau lebih merugikan daripada buah sehat yang diperiksa ulang.
+- Kandidat terdiri atas Logistic Regression (LR), Support Vector Machine kernel RBF (SVM; Cortes dan Vapnik, 1995), dan Random Forest (RF; Breiman, 2001), masing-masing pada 6 kanal (610, 680, 730, 760, 810, 860 nm) dan 18 kanal.
+- Penilaian memakai validasi silang bersarang per buah (StratifiedGroupKFold): 5 lipatan luar untuk menilai kinerja dan 4 lipatan dalam untuk mencari hiperparameter (GridSearchCV, skor F1). Pemisahan ini mencegah bias optimistis akibat pemilihan hiperparameter pada data penilaian (Varma dan Simon, 2006).
+- Model dipilih menurut F1 tertinggi pada lipatan luar, karena akurasi saja tidak membedakan jenis kesalahan (Chicco dan Jurman, 2020). Ambang probabilitas anomali dipilih dari prediksi out-of-fold sebagai ambang tertinggi yang masih memberi recall anomali ≥ {pct(res['recall_target'])}. Dasarnya, biaya buah busuk yang lolos ke keranjang hijau lebih besar daripada biaya pemeriksaan ulang buah sehat, dan titik operasi sebaiknya mengikuti perbandingan biaya kesalahan (Provost dan Fawcett, 2001).
 - Model akhir dilatih ulang pada seluruh data pelatihan dengan hiperparameter terbaik ({', '.join(f'{k.split("__")[1]} = {v}' for k, v in res['params'].items())}), lalu diuji sekali pada data uji independen.
 
 ## 3. Perbandingan model (validasi silang bersarang, ambang 0,50)
@@ -261,7 +261,7 @@ Tabel A. Rata-rata ± simpangan baku 5 lipatan luar, diurutkan menurut F1.
 
 *Gambar C. Akurasi, F1, dan ROC-AUC tiap kandidat.*
 
-Model terpilih: **{res['model_name']} {res['channel_set']}** (F1 {num(res['nested_cv_mean']['f1'])}). Selisihnya dengan SVM 6 kanal (F1 {num(float(comp[(comp['model'] == 'SVM (RBF)') & (comp['channels'] == '6 kanal')]['f1_mean'].iloc[0]))}) lebih kecil dari simpangan baku antarlipatan, jadi keunggulan 18 kanal belum dapat dinyatakan signifikan. LR konsisten paling rendah, sesuai tumpang tindih kelas pada Gambar B.
+Model terpilih adalah **{res['model_name']} {res['channel_set']}** (F1 {num(res['nested_cv_mean']['f1'])}). Selisihnya dengan SVM 6 kanal (F1 {num(float(comp[(comp['model'] == 'SVM (RBF)') & (comp['channels'] == '6 kanal')]['f1_mean'].iloc[0]))}) lebih kecil daripada simpangan baku antarlipatan, sehingga keunggulan 18 kanal belum dapat dinyatakan bermakna. LR konsisten paling rendah, sesuai dengan tumpang tindih kelas pada Gambar B.
 
 ## 4. Ambang keputusan
 
@@ -269,60 +269,78 @@ Model terpilih: **{res['model_name']} {res['channel_set']}** (F1 {num(res['neste
 
 *Gambar D. Presisi, recall, dan F1 terhadap ambang (prediksi out-of-fold). Ambang {num(THR, 2)} adalah ambang tertinggi dengan recall anomali ≥ {pct(res['recall_target'])}.*
 
-Tabel A2. Tukar-ganti ambang untuk **satu scan per buah** (conveyor), dari prediksi out-of-fold 52 buah latih. Ambang lebih rendah menangkap lebih banyak buah busuk, dengan imbalan lebih banyak buah sehat masuk keranjang merah.
+Tabel A2. Pertukaran ambang untuk **satu pemindaian per buah** (conveyor), dari prediksi out-of-fold {res['dataset']['dev_fruits']} buah latih. Ambang yang lebih rendah menangkap lebih banyak buah busuk, dengan konsekuensi lebih banyak buah sehat masuk keranjang merah.
 
 {table(trade_tbl)}
-Ambang produksi saat ini {num(THR, 2)}. Pilihan ambang adalah keputusan bisnis mitra (biaya buah busuk lolos vs buah sehat terbuang), lalu sebaiknya diverifikasi ulang dengan data conveyor.
+Ambang produksi saat ini {num(THR, 2)}. Penetapan ambang merupakan keputusan bisnis mitra berdasarkan biaya buah busuk yang lolos dibandingkan dengan buah sehat yang terbuang, dan perlu diverifikasi ulang dengan data conveyor.
 
 ## 5. Hasil pada data uji independen
 
-Tabel B. Kinerja model terpilih.
+Tabel B. Kinerja model terpilih per pemindaian. Definisi ROC-AUC mengikuti Fawcett (2006).
 
 {table(eval_tbl)}
-Pada data uji independen, ambang {num(THR, 2)} memberi recall {pct(H['recall'])}. Angka ini **di bawah** target {pct(res['recall_target'])} yang tercapai pada validasi silang ({pct(O['recall'])}). Data uji hanya {len(res['dataset']['holdout_fruits'])} buah, jadi satu buah sulit ({anom_f.sort_values('rata_prob').iloc[0]['fruit_id']}, hanya {int(anom_f.sort_values('rata_prob').iloc[0]['scan_anomali'])} dari 8 sisi terdeteksi) sudah menggeser recall per scan secara nyata.
+Pada data uji independen, ambang {num(THR, 2)} menghasilkan recall {pct(H['recall'])}, **di bawah** target {pct(res['recall_target'])} yang tercapai pada validasi silang ({pct(O['recall'])}). Data uji hanya berisi {len(res['dataset']['holdout_fruits'])} buah, sehingga satu buah yang sulit ({anom_f.sort_values('rata_prob').iloc[0]['fruit_id']}, hanya {int(anom_f.sort_values('rata_prob').iloc[0]['scan_anomali'])} dari 8 sisi terdeteksi) sudah menggeser recall per pemindaian secara nyata.
 
 ![Confusion matrix]({figs['cm']})
 
-*Gambar E. Confusion matrix data uji independen ({len(hold)} scan): {H['tn']} normal benar, {H['fp']} normal dikira anomali, {H['fn']} anomali lolos sebagai normal, {H['tp']} anomali tertangkap.*
+*Gambar E. Matriks konfusi data uji independen ({len(hold)} pemindaian): {H['tn']} normal benar, {H['fp']} normal diputus anomali, {H['fn']} anomali lolos sebagai normal, dan {H['tp']} anomali tertangkap.*
 
 ![ROC]({figs['roc']})
 
 *Gambar F. Kurva ROC validasi silang (AUC {num(O['roc_auc'])}) dan data uji independen (AUC {num(H['roc_auc'])}).*
 
-### Keputusan per buah (rata-rata 8 sisi)
+### Putusan per buah (rata-rata 8 sisi)
 
 Tabel C. Probabilitas anomali dirata-ratakan dari semua sisi satu buah, lalu dibandingkan dengan ambang yang sama.
 
 {table(fruit_tbl)}
-Dengan merata-ratakan semua sisi, **{fruit_correct} dari {len(per_fruit)} buah** diputus benar ({int((norm_f['putusan_rata_rata'] == 'normal').sum())}/{len(norm_f)} normal, {int((anom_f['putusan_rata_rata'] == 'anomali').sum())}/{len(anom_f)} anomali). Ini temuan analisis: kerusakan internal tidak selalu berada di jalur cahaya sisi yang dipindai. Alat conveyor memindai **satu kali per buah** pada sisi yang kebetulan menghadap sensor, sehingga angka yang berlaku di lapangan adalah angka per scan pada Tabel B, bukan angka per buah ini.
+Dengan merata-ratakan semua sisi, **{fruit_correct} dari {len(per_fruit)} buah** terklasifikasi benar ({int((norm_f['putusan_rata_rata'] == 'normal').sum())}/{len(norm_f)} normal, {int((anom_f['putusan_rata_rata'] == 'anomali').sum())}/{len(anom_f)} anomali). Temuan analisis ini menunjukkan bahwa kerusakan internal tidak selalu berada pada jalur cahaya sisi yang dipindai. Alat conveyor memindai **satu kali per buah** pada sisi yang kebetulan menghadap sensor, sehingga angka yang berlaku di lapangan adalah angka per pemindaian pada Tabel B, bukan angka per buah ini.
 
 ![Per buah]({figs['per_buah']})
 
-*Gambar G. Probabilitas anomali tiap sisi (titik) dan rata-ratanya (belah ketupat) untuk 13 buah uji independen.*
+*Gambar G. Probabilitas anomali tiap sisi (titik) dan rata-ratanya (belah ketupat) untuk {len(per_fruit)} buah uji independen.*
 
 ## 6. Kepentingan kanal
 
 ![Kepentingan kanal]({figs['kanal']})
 
-*Gambar H. Penurunan ROC-AUC ketika nilai satu kanal diacak (30 ulangan, data uji independen). Batang merah = 730 dan 810 nm.*
+*Gambar H. Penurunan ROC-AUC ketika nilai satu kanal diacak (permutation importance, 30 ulangan, data uji independen). Batang merah menandai 730 dan 810 nm.*
 
-Empat kanal paling berpengaruh: {', '.join(f"{k} ({num(v)})" for k, v in zip(top['kanal'], top['penurunan_auc']))}.
+Empat kanal paling berpengaruh adalah {', '.join(f"{k} ({num(v)})" for k, v in zip(top['kanal'], top['penurunan_auc']))}.
 
 ## 7. Kinerja di server
 
-- Alat conveyor: sensor PIR memicu lampu halogen dan satu pengukuran saat buah lewat; hasil tampil di antrean web operator di ujung belt dan di LCD + buzzer alat.
-- Model berjalan di server HP t530 (AMD GX-215JJ 2 inti 1,5 GHz, Python 3.14, scikit-learn 1.9.0). Waktu inferensi 16 ms per scan; satu siklus scan lewat internet sekitar 4–5 detik, terutama karena pemanasan lampu halogen 3 detik.
-- Prediksi server identik dengan prediksi komputer pengembang untuk 20 scan uji.
-- Model demo saat ini dilatih dengan 80% buah agar data uji independen tetap bersih. Sebelum dipakai dengan alat asli di mitra, model dilatih ulang dengan seluruh 65 buah (`python ml/evaluate_models.py --full`).
+- Pada alat conveyor, sensor PIR memicu lampu halogen dan satu pengukuran saat buah lewat. Hasil ditampilkan pada antrean web operator di ujung belt serta pada LCD dan buzzer alat.
+- Model berjalan di server HP t530 (AMD GX-215JJ 2 inti 1,5 GHz, Python 3.14, scikit-learn 1.9.0). Waktu inferensi 16 ms per pemindaian; satu siklus pemindaian melalui internet berlangsung sekitar 4 sampai 5 detik, terutama karena pemanasan lampu halogen selama 3 detik.
+- Prediksi server identik dengan prediksi komputer pengembang untuk 20 pemindaian uji.
+- Model demo saat ini dilatih dengan 80% buah agar data uji independen tetap bersih. Sebelum dipakai dengan alat fisik di mitra, model dilatih ulang dengan seluruh {res['dataset']['fruits']} buah (`python ml/evaluate_models.py --full`).
 
 ## 8. Keterbatasan
 
-- Jumlah buah kecil (65; uji independen 13), sehingga selang ketidakpastian lebar.
-- Label "anomali" menggabungkan berbagai penyebab kerusakan (larva lalat buah, busuk, memar), bukan hanya infestasi tahap awal.
-- Intensitas adalah nilai mentah terkalibrasi sensor tanpa koreksi referensi putih/gelap, sehingga peka terhadap perubahan lampu dan jarak.
-- Seluruh data latih diambil dengan buah **diam** dan diputar manual 45°. Alat sebenarnya memindai buah yang **bergerak** di belt conveyor sekali lewat (dipicu sensor PIR), sehingga jarak, posisi, dan waktu pengukuran berbeda. Akurasi pada conveyor belum terbukti sampai data conveyor berlabel terkumpul dan model dilatih ulang (`ml/evaluate_models.py --data`).
-- Belum ada uji lapangan dengan alat di lokasi mitra.
-- Recall per scan pada data uji independen ({pct(H['recall'])}) belum mencapai target {pct(res['recall_target'])}. Pilihan untuk satu scan per buah: menurunkan ambang (Tabel A2) dan menambah data conveyor.
+- Jumlah buah kecil ({res['dataset']['fruits']} buah; uji independen {len(res['dataset']['holdout_fruits'])} buah), sehingga selang ketidakpastian estimasi kinerja lebar.
+- Label anomali menggabungkan beberapa penyebab kerusakan (larva lalat buah, busuk, memar), tidak terbatas pada infestasi tahap awal.
+- Intensitas berupa nilai terkalibrasi sensor tanpa koreksi referensi putih dan gelap, sehingga peka terhadap perubahan lampu dan jarak.
+- Seluruh data latih diambil dengan buah **diam** yang diputar manual 45°, sedangkan alat memindai buah yang **bergerak** di belt conveyor satu kali (dipicu sensor PIR), sehingga jarak, posisi, dan waktu pengukuran berbeda. Kinerja pada conveyor belum terbukti sampai data conveyor berlabel terkumpul dan model dilatih ulang (`ml/evaluate_models.py --data`).
+- Uji lapangan dengan alat fisik di lokasi mitra belum dilakukan.
+- Recall per pemindaian pada data uji independen ({pct(H['recall'])}) belum mencapai target {pct(res['recall_target'])}. Pilihan perbaikan untuk satu pemindaian per buah adalah menurunkan ambang (Tabel A2) dan menambah data conveyor.
+
+## Daftar Pustaka
+
+Breiman, L. 2001. Random forests. *Machine Learning*. 45(1):5-32. DOI: 10.1023/A:1010933404324.
+
+Chicco, D. dan Jurman, G. 2020. The advantages of the Matthews correlation coefficient (MCC) over F1 score and accuracy in binary classification evaluation. *BMC Genomics*. 21(1):6. DOI: 10.1186/s12864-019-6413-7.
+
+Cortes, C. dan Vapnik, V. 1995. Support-vector networks. *Machine Learning*. 20(3):273-297. DOI: 10.1007/BF00994018.
+
+Fawcett, T. 2006. An introduction to ROC analysis. *Pattern Recognition Letters*. 27(8):861-874. DOI: 10.1016/j.patrec.2005.10.010.
+
+Kapoor, S. dan Narayanan, A. 2023. Leakage and the reproducibility crisis in machine-learning-based science. *Patterns*. 4(9):100804. DOI: 10.1016/j.patter.2023.100804.
+
+Provost, F. dan Fawcett, T. 2001. Robust classification for imprecise environments. *Machine Learning*. 42(3):203-231. DOI: 10.1023/A:1007601015854.
+
+Roberts, D.R., Bahn, V., Ciuti, S., Boyce, M.S., Elith, J., Guillera-Arroita, G., Hauenstein, S., Lahoz-Monfort, J.J., Schröder, B., Thuiller, W., Warton, D.I., Wintle, B.A., Hartig, F. dan Dormann, C.F. 2017. Cross-validation strategies for data with temporal, spatial, hierarchical, or phylogenetic structure. *Ecography*. 40(8):913-929. DOI: 10.1111/ecog.02881.
+
+Varma, S. dan Simon, R. 2006. Bias in error estimation when using cross-validation for model selection. *BMC Bioinformatics*. 7:91. DOI: 10.1186/1471-2105-7-91.
 """
 (DEST / "HASIL_ML.md").write_text(md, encoding="utf-8")
 

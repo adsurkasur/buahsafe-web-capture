@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-10-26 01:45] [Claude Code]
+- **Goal**: Teks bahan laporan ML ke ragam akademik.
+- **Actions**: Templat teks `HASIL_ML.md` di `ml/report_materials.py` ditulis ulang ke ragam ilmiah dengan sitasi metode dan Daftar Pustaka (dikerjakan sesi paralel "ragam akademik"); perhitungan tidak berubah. Seluruh DOI diverifikasi lewat Crossref (15/15).
+- **Files Modified**: `ml/report_materials.py`, `logs/ACTIVITY_LOG.md`.
+- **Verification**: Generator dijalankan ulang; angka di md/docx/xlsx sama dengan `ml/output/selection_result.json`.
+
 ### [2026-10-25 23:30] [Claude Code]
 - **Goal**: Menyesuaikan sistem dengan alat sebenarnya: belt conveyor berjalan terus, sensor PIR memicu lampu dan satu pengukuran per buah, operator memilah di ujung belt.
 - **Actions**:
