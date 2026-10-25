@@ -1,4 +1,4 @@
-# Server produksi + ESP32 WiFi
+# Server produksi + ESP32 conveyor (WiFi)
 
 Status per 2026-10-23: server berjalan di HP t530 Thin Client (`adsur@192.168.1.10`) dan bisa diakses publik di `https://buahsafe-api.adsurkasur.my.id` (URL sementara). Alur scan sudah diuji lewat internet memakai ESP32 tiruan (spektrum asli dari dataset final). Belum diuji dengan ESP32 fisik.
 
@@ -6,13 +6,15 @@ Status per 2026-10-23: server berjalan di HP t530 Thin Client (`adsur@192.168.1.
 
 ```text
 Mitra                                   Server (HP t530)
-ESP32 + AS7265x --WiFi/HTTPS-->  Cloudflare Tunnel --> gunicorn 127.0.0.1:5000 --> SVM 18 kanal
-  long-poll /api/device/poll                                  |
-  POST /api/device/result                                     +--> SQLite (HDD)
-Peramban operator (Vercel) --HTTPS--> /api/scan, /api/measurements, ...
+Belt conveyor -> PIR -> ESP32 + AS7265x --WiFi/HTTPS--> Cloudflare Tunnel --> gunicorn 127.0.0.1:5000 --> SVM 18 kanal
+  detak  GET  /api/device/poll (tiap 10 dtk)                                    |
+  hasil  POST /api/device/auto-scan (tiap buah)                                 +--> SQLite (HDD)
+Antrean web operator di ujung belt (Vercel) --HTTPS--> /api/measurements (tiap 1 dtk)
 ```
 
-ESP32 berada di balik NAT jaringan mitra, jadi server tidak bisa memanggilnya. ESP32 yang terus bertanya (long-poll maksimal 10 detik). Saat operator menekan scan, server memberi perintah ke ESP32 yang sedang menunggu, ESP32 memindai, lalu mengirim baris `DATA,...` yang formatnya sama dengan protokol USB. Implementasinya ada di `wifi_device.py`. Waktu satu scan: sekitar 3 detik jaringan dan server, ditambah 3 detik pemanasan lampu.
+Mode `BUAHSAFE_DEVICE_MODE=conveyor` (produksi). Belt berjalan terus dan motornya bersaklar sendiri. Sensor PIR memicu ESP32: lampu halogen menyala, AS7265x mengukur sekali saat buah lewat, lalu ESP32 mengirim baris `DATA,...` (format sama dengan protokol USB) ke `/api/device/auto-scan`. Server memberi ID `CV-YYYYMMDD-NNNN`, menilai dengan model, dan menjawab nomor urut + putusan untuk LCD dan buzzer. Buah yang gagal diukur tetap dilaporkan (`{"error": ...}`) dan mendapat nomor, agar urutan antrean tidak bergeser; barisnya bertanda `GAGAL` dan tidak ikut ekspor dataset. `/api/scan` manual menjawab 409 di mode ini.
+
+Mode `wifi` (scan diperintah dari web lewat long-poll) masih ada di `wifi_device.py` untuk akuisisi dengan buah diam. Mode USB lama (`serial`, bawaan) tetap dipakai untuk akuisisi dataset di laptop.
 
 Mode USB lama (`BUAHSAFE_DEVICE_MODE=serial`, bawaan) tetap dipakai untuk akuisisi dataset di laptop.
 
@@ -55,7 +57,7 @@ Versi scikit-learn dikunci di 1.9.0 karena `models/buahsafe_model_svm_6ch.joblib
 | Variabel | Nilai produksi | Fungsi |
 |---|---|---|
 | `BUAHSAFE_ENV` | `production` | Semua API wajib login, traceback tidak dikirim ke klien, dasbor USB `/` dimatikan |
-| `BUAHSAFE_DEVICE_MODE` | `wifi` | Pakai `WifiDevice` alih-alih port serial |
+| `BUAHSAFE_DEVICE_MODE` | `conveyor` | Alat dipicu PIR dan mengirim hasil sendiri (`wifi` = scan diperintah dari web) |
 | `BUAHSAFE_DEVICE_ID` | `BSF-001` | Harus sama dengan firmware |
 | `BUAHSAFE_DEVICE_KEY` | acak 43 karakter | Harus sama dengan `config.h` firmware |
 | `BUAHSAFE_DB_PATH` | `/srv/hdd1/buahsafe/data/buahsafe.db` | Database di HDD |
@@ -66,7 +68,7 @@ Klien Vercel: set `VITE_API_URL=https://buahsafe-api.adsurkasur.my.id`, lalu tam
 
 ## Firmware ESP32 (`buahsafe_wifi/`)
 
-Board: ESP32-WROOM-32 DevKit USB-C dengan chip USB CP2102. Wiring sama dengan firmware USB (LCD SDA 13/SCL 14, sensor SDA 21/SCL 22, relay 26 active-low, buzzer 25).
+Board: ESP32-WROOM-32 DevKit USB-C dengan chip USB CP2102. Wiring mengikuti Tabel Koneksi di draf laporan: PIR HC-SR501 OUT GPIO 27, relay lampu GPIO 4, buzzer GPIO 25, LCD SDA 13/SCL 14, AS7265x SDA 21/SCL 22. Pin dan polaritas bisa ditimpa di `config.h` (lihat `config.example.h`).
 
 1. Pasang driver CP210x (Silicon Labs) bila port COM tidak muncul.
 2. Arduino IDE: tambahkan board manager `https://espressif.github.io/arduino-esp32/package_esp32_index.json`, pasang **esp32 by Espressif** (diuji 3.3.12), pilih **ESP32 Dev Module**.
@@ -83,7 +85,7 @@ arduino-cli upload --fqbn esp32:esp32:esp32 -p COM5 buahsafe_wifi
 
 1. Nyalakan alat. Bila belum kenal WiFi, LCD menampilkan `Setup WiFi HP ke / BuahSafe-Setup`.
 2. Dari HP, sambungkan ke WiFi `BuahSafe-Setup` (sandi dari `config.h`), halaman setup terbuka otomatis. Pilih WiFi mitra dan isi sandinya.
-3. LCD `BuahSafe siap / Menunggu scan` berarti alat sudah terhubung ke server. Di web, perangkat BSF-001 berstatus Online.
+3. LCD `BuahSafe siap / Jalankan belt` berarti alat sudah terhubung ke server. Di web, menu Antrean Conveyor menampilkan "Alat terhubung". Tunggu 30–60 detik setelah alat menyala sebelum belt dijalankan: PIR HC-SR501 perlu menstabilkan diri.
 4. Pindah WiFi: tahan tombol BOOT sambil menyalakan alat selama 3 detik.
 
 ### Arti pesan LCD
@@ -94,14 +96,24 @@ arduino-cli upload --fqbn esp32:esp32:esp32 -p COM5 buahsafe_wifi
 | `Server tdk jawab / Server: -1` | Tidak ada internet atau galat TLS | Periksa internet mitra |
 | `Server tdk jawab / Server: 502` | Tunnel jalan, backend mati | `sudo systemctl restart buahsafe` |
 | `Kunci alat salah` | `config.h` tidak sama dengan server | Samakan `BUAHSAFE_DEVICE_KEY` |
-| `Belum terkonfirm` | Data terkirim, nomor scan belum kembali | Cek riwayat di web |
+| `#57 NORMAL / Keranjang HIJAU` (1 bip) | Buah ke-57 lolos | Masukkan ke keranjang hijau |
+| `#57 ANOMALI / Keranjang MERAH` (3 bip panjang) | Buah ke-57 terindikasi rusak | Pisahkan ke keranjang merah |
+| `#57 GAGAL / Sisihkan buah` (2 bip berulang) | Sensor gagal, buah lewat saat alat sibuk, atau model gagal | Sisihkan untuk diperiksa manual |
+| `GAGAL KIRIM -1 / Sisihkan buah` | Server tak terjangkau; buah tidak bernomor | Sisihkan buah; hentikan belt sampai internet pulih |
 | `ERROR AS7265x` | Sensor tidak terbaca | Periksa kabel I2C sensor |
+
+### Kalibrasi di lokasi
+
+1. **Polaritas relay.** Bila lampu menyala terus saat alat diam, ubah `RELAY_ACTIVE_LOW` di `config.h`.
+2. **PIR pada jambu.** Lewatkan 20 buah satu per satu dan pastikan nomor di LCD bertambah 20. Bila ada yang terlewat atau satu buah memicu dua kali, ganti ke sensor halangan IR (`TRIGGER_ACTIVE_LEVEL LOW` untuk E18-D80NK) atau atur `TRIGGER_COOLDOWN_MS`.
+3. **Waktu lewat.** Server mencatat lama sinyal PIR aktif dan lama pengukuran tiap buah: `journalctl -u buahsafe | grep CONVEYOR` atau status perangkat di `/api/status` (`last_trigger_ms`, `last_measure_ms`). `LAMP_SETTLE_MS` + waktu ukur (~0,5 dtk) harus lebih kecil dari waktu buah berada di depan sensor. Bila belt terlalu cepat, perlambat belt atau beri jarak antarbuah.
+4. **Jarak antarbuah.** Buah berikutnya sebaiknya baru memicu setelah hasil buah sebelumnya kembali (~1 dtk). Picu yang terlalu cepat dilaporkan `GAGAL` (`TERLAMBAT_UKUR`), bukan diukur terlambat.
 
 Sertifikat: firmware mempercayai root CA Google Trust Services, Let's Encrypt (ISRG), dan SSL.com (`root_ca.h`). Root paling awal kedaluwarsa 2035-06-04.
 
 ## ESP32 virtual, model, dan backup (2026-10-25)
 
-- `buahsafe-sim.service` menjalankan `esp32_simulator.py`: protokol sama dengan firmware, memutar scan nyata dari 13 buah uji independen (`ml/holdout_fruits.json`). ID buah yang memuat ID holdout (mis. `UJI-BOSOK_004`) memutar buah itu; awalan `GAGAL-` mensimulasikan sensor gagal. Perangkat tampil sebagai "Meja Sortasi (Simulator)" lewat `BUAHSAFE_DEVICE_LABEL`.
+- `buahsafe-sim.service` menjalankan `esp32_simulator.py` (firmware `sim-2.0-conveyor`): detak tiap 10 detik, dan hanya mengirim buah bila supervisor/owner menekan "Jalankan simulasi conveyor (10 buah)" di web (`POST /api/device/simulate`). Spektrum = scan nyata dari 13 buah uji independen (`ml/holdout_fruits.json`), jarak antarbuah 3–6 detik, buah ke-7 dibuat gagal. ID berawalan `SIM-`. Perangkat tampil sebagai "Meja Sortasi (Simulator)" lewat `BUAHSAFE_DEVICE_LABEL`.
 - Model: `models/buahsafe_model.joblib` dibuat oleh `ml/evaluate_models.py` (SVM-RBF 18 kanal, ambang anomali 0,45, dilatih 80% buah). Bahan laporan: `ml/report_materials.py` -> `../bahan-laporan-ml/`.
 - `buahsafe-backup.timer` (02.00) menjalankan `deploy/backup_db.py` ke `/srv/hdd1/backups/buahsafe`, simpan 14 hari, dicek `integrity_check`.
 - Berkas unit ada di `deploy/`; pasang dengan `sudo cp deploy/*.service deploy/*.timer /etc/systemd/system/ && sudo systemctl daemon-reload`.

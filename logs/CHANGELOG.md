@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - 2026-10-25 (conveyor)
+### Added
+- Mode conveyor: `/api/device/auto-scan`, `/api/device/simulate`, detak perangkat, nomor urut harian buah.
+- Firmware conveyor v2.1.0 (PIR GPIO 27, relay GPIO 4, buzzer berpola).
+- `ml/evaluate_models.py --data` untuk melatih ulang dengan scan conveyor berlabel.
+
+### Changed
+- ESP32 virtual meniru conveyor dan hanya mengirim buah atas permintaan web.
+- Ekspor CSV tidak memuat baris penanda `GAGAL`.
+
 ## [Unreleased] - 2026-10-25
 ### Added
 - ESP32 virtual (`esp32_simulator.py`) + `buahsafe-sim.service`.

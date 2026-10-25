@@ -34,8 +34,12 @@ SAVE_ACK_WAIT_S = 4.0
 
 
 class WifiDevice:
-    def __init__(self, device_id: str = "BSF-001") -> None:
+    def __init__(self, device_id: str = "BSF-001", mode: str = "wifi") -> None:
         self.device_id = device_id
+        # "wifi": scan diperintah dari web (long-poll). "conveyor": ESP32 memicu sendiri
+        # lewat sensor PIR dan hanya mengirim detak + hasil (/api/device/auto-scan).
+        self.mode = mode
+        self._simulate = 0
         self.port = "wifi"
         self.last_error: str | None = None
         self.last_raw_message: str | None = None
@@ -60,7 +64,7 @@ class WifiDevice:
         return {
             "connected": self.connected,
             "port": self.port,
-            "mode": "wifi",
+            "mode": self.mode,
             "device_id": self.device_id,
             "seconds_since_seen": round(age, 1) if age is not None else None,
             "last_error": self.last_error,
@@ -113,6 +117,28 @@ class WifiDevice:
             self._cond.notify_all()
 
     # ---------- dipanggil endpoint /api/device/* ----------
+
+    def heartbeat(self, info: dict[str, Any]) -> int:
+        """Detak mode conveyor. Kembalikan jumlah buah yang diminta disimulasikan (hanya simulator)."""
+        self._last_seen = time.monotonic()
+        self._info.update({k: v for k, v in info.items() if v is not None},
+                          last_poll=datetime.now().isoformat(timespec="seconds"))
+        with self._cond:
+            count, self._simulate = self._simulate, 0
+        return count
+
+    @property
+    def is_simulator(self) -> bool:
+        return str(self._info.get("firmware") or "").startswith("sim")
+
+    def request_simulation(self, count: int) -> None:
+        with self._cond:
+            self._simulate += count
+
+    def record_trigger(self, trigger_ms: Any, measure_ms: Any) -> None:
+        """Lama sinyal PIR aktif dan lama pengukuran, untuk kalibrasi LAMP_SETTLE_MS di lokasi."""
+        self._last_seen = time.monotonic()
+        self._info.update(last_trigger_ms=trigger_ms, last_measure_ms=measure_ms)
 
     def poll(self, info: dict[str, Any]) -> dict[str, Any] | None:
         """Long-poll dari ESP32. Kembalikan perintah atau None bila tidak ada."""

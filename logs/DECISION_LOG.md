@@ -1,5 +1,13 @@
 # Decision Log (Architecture Decision Records)
 
+### [DEC-008] Mode Conveyor: Alat Memicu Scan Sendiri, Server Memberi Nomor Urut
+- **Date**: 2026-10-25
+- **Status**: Accepted (menggantikan alur scan-diperintah-web pada DEC-006 untuk produksi)
+- **Context**: Alat sebenarnya adalah belt conveyor yang berjalan terus dengan pemicu PIR; tidak ada operator yang menekan tombol per buah, dan operator di ujung belt mencocokkan hasil dengan buah berdasarkan urutan.
+- **Decision**: ESP32 mengukur saat PIR terpicu dan mengirim ke `/api/device/auto-scan`; server memberi nomor urut harian yang tampil di LCD, buzzer, dan antrean web. Setiap picu dilaporkan, termasuk yang gagal, supaya urutan tidak bergeser. Long-poll diganti detak karena memblokir ESP32 sampai 10 detik.
+- **Alternatives**: Antrean ulang di ESP32 saat gagal kirim (ditolak: urutan bisa bergeser dan hasil terlambat untuk buah yang sudah lewat); pemilahan otomatis dengan aktuator (belum ada di alat).
+- **Consequences**: Satu scan per buah, sehingga recall per scan (0,625 di holdout) yang berlaku; ambang menjadi keputusan bisnis. Model dilatih dari buah diam; kinerja pada buah bergerak perlu data conveyor berlabel. Bila internet putus, buah tidak bernomor dan harus disisihkan.
+
 ### [DEC-007] Model 18 Kanal Dipilih Lewat Nested CV + Holdout, Ambang Berbasis Recall
 - **Date**: 2026-10-25
 - **Status**: Accepted (menggantikan pilihan SVM 6 kanal C=100 pada DEC-003)

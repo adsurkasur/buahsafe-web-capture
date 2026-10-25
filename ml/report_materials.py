@@ -144,7 +144,9 @@ yo, po = best_oof["y"].to_numpy(), best_oof["prob"].to_numpy()
 curve = pd.DataFrame({"ambang": ts,
                       "presisi": [precision_score(yo, po >= t, zero_division=0) for t in ts],
                       "recall": [recall_score(yo, po >= t) for t in ts],
-                      "f1": [f1_score(yo, po >= t) for t in ts]})
+                      "f1": [f1_score(yo, po >= t) for t in ts],
+                      # bagian buah sehat yang dicap anomali (dibuang/diperiksa ulang)
+                      "alarm_palsu": [float(((po >= t) & (yo == 0)).sum() / max((yo == 0).sum(), 1)) for t in ts]})
 fig, ax = plt.subplots(figsize=(7, 4))
 for col, color in (("presisi", "#1565c0"), ("recall", RED), ("f1", GREY)):
     ax.plot(curve["ambang"], curve[col], color=color, lw=2, label=col.capitalize() if col != "f1" else "F1")
@@ -209,6 +211,13 @@ eval_tbl = pd.DataFrame({
     f"Uji independen, ambang {num(THR, 2)}": [num(H[k]) if k in ("roc_auc", "f1") else pct(H[k]) for k in ["accuracy", "precision", "recall", "specificity", "f1", "roc_auc"]],
     "Uji independen, ambang 0,50": [num(D[k]) if k in ("roc_auc", "f1") else pct(D[k]) for k in ["accuracy", "precision", "recall", "specificity", "f1", "roc_auc"]],
 })
+trade = curve[curve["ambang"].isin(np.round(np.arange(0.20, 0.501, 0.05), 2))]
+trade_tbl = pd.DataFrame({
+    "Ambang": [num(t, 2) for t in trade["ambang"]],
+    "Buah busuk tertangkap (recall)": [pct(v) for v in trade["recall"]],
+    "Buah sehat ikut ke keranjang merah": [pct(v) for v in trade["alarm_palsu"]],
+    "Presisi": [pct(v) for v in trade["presisi"]],
+})
 fruit_tbl = per_fruit.assign(rata_prob=per_fruit["rata_prob"].map(num),
                              scan_anomali=per_fruit["scan_anomali"].astype(str) + "/" + per_fruit["jumlah_scan"].astype(str))[
     ["fruit_id", "label", "scan_anomali", "rata_prob", "putusan_rata_rata"]]
@@ -260,6 +269,11 @@ Model terpilih: **{res['model_name']} {res['channel_set']}** (F1 {num(res['neste
 
 *Gambar D. Presisi, recall, dan F1 terhadap ambang (prediksi out-of-fold). Ambang {num(THR, 2)} adalah ambang tertinggi dengan recall anomali ≥ {pct(res['recall_target'])}.*
 
+Tabel A2. Tukar-ganti ambang untuk **satu scan per buah** (conveyor), dari prediksi out-of-fold 52 buah latih. Ambang lebih rendah menangkap lebih banyak buah busuk, dengan imbalan lebih banyak buah sehat masuk keranjang merah.
+
+{table(trade_tbl)}
+Ambang produksi saat ini {num(THR, 2)}. Pilihan ambang adalah keputusan bisnis mitra (biaya buah busuk lolos vs buah sehat terbuang), lalu sebaiknya diverifikasi ulang dengan data conveyor.
+
 ## 5. Hasil pada data uji independen
 
 Tabel B. Kinerja model terpilih.
@@ -280,7 +294,7 @@ Pada data uji independen, ambang {num(THR, 2)} memberi recall {pct(H['recall'])}
 Tabel C. Probabilitas anomali dirata-ratakan dari semua sisi satu buah, lalu dibandingkan dengan ambang yang sama.
 
 {table(fruit_tbl)}
-Dengan merata-ratakan semua sisi, **{fruit_correct} dari {len(per_fruit)} buah** diputus benar ({int((norm_f['putusan_rata_rata'] == 'normal').sum())}/{len(norm_f)} normal, {int((anom_f['putusan_rata_rata'] == 'anomali').sum())}/{len(anom_f)} anomali). Pemindaian satu sisi saja lebih rentan salah karena kerusakan internal tidak selalu berada di jalur cahaya sisi itu.
+Dengan merata-ratakan semua sisi, **{fruit_correct} dari {len(per_fruit)} buah** diputus benar ({int((norm_f['putusan_rata_rata'] == 'normal').sum())}/{len(norm_f)} normal, {int((anom_f['putusan_rata_rata'] == 'anomali').sum())}/{len(anom_f)} anomali). Ini temuan analisis: kerusakan internal tidak selalu berada di jalur cahaya sisi yang dipindai. Alat conveyor memindai **satu kali per buah** pada sisi yang kebetulan menghadap sensor, sehingga angka yang berlaku di lapangan adalah angka per scan pada Tabel B, bukan angka per buah ini.
 
 ![Per buah]({figs['per_buah']})
 
@@ -296,6 +310,7 @@ Empat kanal paling berpengaruh: {', '.join(f"{k} ({num(v)})" for k, v in zip(top
 
 ## 7. Kinerja di server
 
+- Alat conveyor: sensor PIR memicu lampu halogen dan satu pengukuran saat buah lewat; hasil tampil di antrean web operator di ujung belt dan di LCD + buzzer alat.
 - Model berjalan di server HP t530 (AMD GX-215JJ 2 inti 1,5 GHz, Python 3.14, scikit-learn 1.9.0). Waktu inferensi 16 ms per scan; satu siklus scan lewat internet sekitar 4–5 detik, terutama karena pemanasan lampu halogen 3 detik.
 - Prediksi server identik dengan prediksi komputer pengembang untuk 20 scan uji.
 - Model demo saat ini dilatih dengan 80% buah agar data uji independen tetap bersih. Sebelum dipakai dengan alat asli di mitra, model dilatih ulang dengan seluruh 65 buah (`python ml/evaluate_models.py --full`).
@@ -305,8 +320,9 @@ Empat kanal paling berpengaruh: {', '.join(f"{k} ({num(v)})" for k, v in zip(top
 - Jumlah buah kecil (65; uji independen 13), sehingga selang ketidakpastian lebar.
 - Label "anomali" menggabungkan berbagai penyebab kerusakan (larva lalat buah, busuk, memar), bukan hanya infestasi tahap awal.
 - Intensitas adalah nilai mentah terkalibrasi sensor tanpa koreksi referensi putih/gelap, sehingga peka terhadap perubahan lampu dan jarak.
-- Belum ada uji lapangan dengan alat di meja sortasi mitra.
-- Recall per scan pada data uji independen ({pct(H['recall'])}) belum mencapai target {pct(res['recall_target'])}; pemindaian beberapa sisi per buah disarankan.
+- Seluruh data latih diambil dengan buah **diam** dan diputar manual 45°. Alat sebenarnya memindai buah yang **bergerak** di belt conveyor sekali lewat (dipicu sensor PIR), sehingga jarak, posisi, dan waktu pengukuran berbeda. Akurasi pada conveyor belum terbukti sampai data conveyor berlabel terkumpul dan model dilatih ulang (`ml/evaluate_models.py --data`).
+- Belum ada uji lapangan dengan alat di lokasi mitra.
+- Recall per scan pada data uji independen ({pct(H['recall'])}) belum mencapai target {pct(res['recall_target'])}. Pilihan untuk satu scan per buah: menurunkan ambang (Tabel A2) dan menambah data conveyor.
 """
 (DEST / "HASIL_ML.md").write_text(md, encoding="utf-8")
 
@@ -387,14 +403,14 @@ def flow(steps: list[tuple[str, str]], name: str, title: str, per_row: int = 4) 
     plt.close(fig)
 
 
-flow([("Jambu tiba", "Buah dari petani mitra | diberi ID / barcode"),
-      ("Disinari", "Lampu halogen di satu sisi, | sensor AS7265x di sisi lain"),
-      ("Diukur", "Sensor membaca intensitas | cahaya tembus di 18 warna"),
+flow([("Masuk belt", "Buah diletakkan di conveyor | yang terus berjalan"),
+      ("Terdeteksi", "Sensor PIR memicu | lampu halogen menyala"),
+      ("Diukur", "AS7265x membaca cahaya tembus | 18 warna, sekali lewat"),
       ("Dikirim", "ESP32 mengirim lewat WiFi | mitra dan internet (HTTPS)"),
       ("Dinilai", "Server mini PC menjalankan | model ML (16 ms)"),
       ("Disimpan", "Hasil masuk database | di server (backup harian)"),
-      ("Ditampilkan", "Web buahsafe.vercel.app | menampilkan putusan"),
-      ("Dipilah", "Operator: keranjang HIJAU | atau MERAH")],
+      ("Ditampilkan", "Antrean web + LCD + bunyi | dengan nomor urut buah"),
+      ("Dipilah", "Operator di ujung belt: | keranjang HIJAU atau MERAH")],
      "09_alur_satu_buah.png", "Perjalanan satu buah jambu di sistem BuahSafe")
 flow([("Kumpulkan", "65 buah dipindai | 8 sisi = 518 scan"),
       ("Beri kunci jawaban", "Buah disimpan sampai | rusak tampak, lalu dibelah"),

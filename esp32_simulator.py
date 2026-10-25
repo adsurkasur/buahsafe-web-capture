@@ -1,16 +1,18 @@
-"""ESP32 virtual BuahSafe: meniru firmware buahsafe_wifi/ tanpa perangkat keras.
+"""ESP32 virtual BuahSafe (mode conveyor): meniru firmware buahsafe_wifi/ tanpa perangkat keras.
 
-Bicara dengan server memakai protokol yang SAMA PERSIS dengan firmware:
-  GET  /api/device/poll   (long-poll, header X-Device-Key)
-  POST /api/device/result {"job", "line": "DATA,<n>,<18 nilai>"} atau {"job", "error"}
+Bicara dengan server memakai protokol yang SAMA dengan firmware conveyor:
+  GET  /api/device/poll?fw=sim-...   detak tiap 10 detik (header X-Device-Key)
+  POST /api/device/auto-scan         {"line": "DATA,<n>,<18 nilai>", "trigger_ms", "measure_ms"}
+                                     atau {"error": "..."} bila sensor gagal
+
+Simulator TIDAK memindai sendiri. Ia hanya mengirim buah bila supervisor/owner
+menekan "Jalankan simulasi conveyor" di web (server menitipkan {"simulate": n}
+di jawaban detak), sehingga database tidak terisi data simulasi tanpa diminta.
 
 Spektrum yang dikirim adalah scan NYATA dari buah holdout (ml/holdout_fruits.json),
-yaitu buah yang tidak pernah dipakai melatih model demo, jadi putusan yang muncul
-di web adalah uji jujur, bukan hafalan.
-  - ID buah yang diketik operator memuat ID buah holdout (mis. BOSOK_004, UJI-BOSOK_004)
-    -> putar salah satu rotasi buah itu.
-  - ID berawalan GAGAL-  -> laporkan sensor gagal (uji jalur gagal-aman).
-  - Selain itu           -> buah holdout acak.
+yaitu buah yang tidak pernah dipakai melatih model demo. Jarak antarbuah 3-6 detik
+meniru belt; buah ke-7 dalam satu kiriman (bila ada) disimulasikan gagal diukur
+supaya jalur "GAGAL - sisihkan" ikut teruji.
 
 Konfigurasi lewat env: BUAHSAFE_SERVER_URL, BUAHSAFE_DEVICE_KEY.
 Cek logika tanpa jaringan: python esp32_simulator.py --check
@@ -32,30 +34,22 @@ DATA = ROOT / "output" / "finalised" / "buahsafe_dataset_gabungan_final.csv"
 HOLDOUT = ROOT / "ml" / "holdout_fruits.json"
 CHANNELS = ["nm410", "nm435", "nm460", "nm485", "nm510", "nm535", "nm560", "nm585", "nm610",
             "nm645", "nm680", "nm705", "nm730", "nm760", "nm810", "nm860", "nm900", "nm940"]
-FIRMWARE = "sim-1.0"
-WARMUP_S = 3.0          # pemanasan lampu halogen di firmware asli
-HTTP_TIMEOUT_S = 15     # sama dengan firmware
+FIRMWARE = "sim-2.0-conveyor"
+HEARTBEAT_S = 10
+HTTP_TIMEOUT_S = 15
 BACKOFF_MAX_S = 30
+FAIL_AT = 7  # urutan buah dalam satu kiriman yang disimulasikan gagal diukur
 
 
-def load_holdout_scans() -> dict[str, list[dict[str, str]]]:
+def load_holdout_scans() -> list[dict[str, str]]:
     fruits = set(json.loads(HOLDOUT.read_text(encoding="utf-8"))["fruits"])
-    scans: dict[str, list[dict[str, str]]] = {}
     with open(DATA, encoding="utf-8-sig") as f:
-        for row in csv.DictReader(f):
-            if row["fruit_id"] in fruits:
-                scans.setdefault(row["fruit_id"].upper(), []).append(row)
-    return scans
+        return [row for row in csv.DictReader(f) if row["fruit_id"] in fruits]
 
 
-def choose_scan(scans: dict[str, list[dict[str, str]]], fruit_id: str) -> dict[str, str] | None:
-    """None = simulasikan sensor gagal."""
-    key = fruit_id.strip().upper()
-    if key.startswith("GAGAL"):
-        return None
-    # ID boleh berawalan, mis. UJI-BOSOK_004 (data uji yang nanti dihapus) -> BOSOK_004
-    match = next((fruit for fruit in sorted(scans, key=len, reverse=True) if fruit in key), None)
-    return random.choice(scans[match or random.choice(sorted(scans))])
+def batch_plan(count: int) -> list[bool]:
+    """True = buah diukur normal, False = sensor gagal (buah ke-FAIL_AT)."""
+    return [i + 1 != FAIL_AT for i in range(count)]
 
 
 class Simulator:
@@ -76,24 +70,25 @@ class Simulator:
                 raw = resp.read()
                 return resp.status, json.loads(raw) if raw else None
         except urllib.error.HTTPError as err:
-            return err.code, None
+            raw = err.read()
+            return err.code, json.loads(raw) if raw else None
 
-    def handle(self, command: dict) -> None:
-        job, fruit_id = command["job"], command.get("fruit_id", "")
-        row = choose_scan(self.scans, fruit_id)
-        time.sleep(WARMUP_S)
-        if row is None:
-            code, _ = self._request("POST", "/api/device/result", {"job": job, "error": "AS7265X_NOT_READY"})
-            print(f"[SCAN] {fruit_id}: simulasi sensor gagal -> HTTP {code}", flush=True)
+    def send_fruit(self, measured: bool) -> None:
+        if not measured:
+            code, resp = self._request("POST", "/api/device/auto-scan", {"error": "AS7265X_NOT_READY", "fw": FIRMWARE})
+            print(f"[BUAH] simulasi sensor gagal -> HTTP {code} {(resp or {}).get('fruit_id')}", flush=True)
             return
+        row = random.choice(self.scans)
         self.scan_no += 1
         line = f"DATA,{self.scan_no}," + ",".join(f"{float(row[c]):.6f}" for c in CHANNELS)
-        code, resp = self._request("POST", "/api/device/result", {"job": job, "line": line})
-        print(f"[SCAN] {fruit_id}: putar {row['fruit_id']} rotasi {row.get('rotasi_buah', '?')} "
-              f"(label {row['label']}) -> HTTP {code}, scan_no {(resp or {}).get('scan_no')}", flush=True)
+        code, resp = self._request("POST", "/api/device/auto-scan", {
+            "line": line, "fw": FIRMWARE,
+            "trigger_ms": random.randint(600, 1200), "measure_ms": random.randint(450, 650)})
+        print(f"[BUAH] putar {row['fruit_id']} (label {row['label']}) -> HTTP {code} "
+              f"{(resp or {}).get('fruit_id')} {(resp or {}).get('result')}", flush=True)
 
     def run(self) -> None:
-        print(f"ESP32 virtual -> {self.server} | {len(self.scans)} buah holdout", flush=True)
+        print(f"ESP32 virtual conveyor -> {self.server} | {len(self.scans)} scan buah holdout", flush=True)
         backoff = 1
         while True:
             try:
@@ -101,28 +96,27 @@ class Simulator:
             except (urllib.error.URLError, TimeoutError, ConnectionError) as err:
                 code, body = -1, None
                 print(f"[NET] {err}", flush=True)
-            if code == 204:
+            if code in (200, 204):
                 backoff = 1
-            elif code == 200 and body:
-                backoff = 1
-                self.handle(body)
-            else:
-                if code == 401:
-                    print("[AUTH] Kunci perangkat ditolak server", flush=True)
-                    backoff = BACKOFF_MAX_S
-                time.sleep(backoff)
-                backoff = min(backoff * 2, BACKOFF_MAX_S)
+                for measured in batch_plan(int((body or {}).get("simulate", 0))):
+                    time.sleep(random.uniform(3, 6))  # jarak antarbuah di belt
+                    self.send_fruit(measured)
+                time.sleep(HEARTBEAT_S)
+                continue
+            if code == 401:
+                print("[AUTH] Kunci perangkat ditolak server", flush=True)
+                backoff = BACKOFF_MAX_S
+            time.sleep(backoff)
+            backoff = min(backoff * 2, BACKOFF_MAX_S)
 
 
 def check() -> None:
     scans = load_holdout_scans()
-    assert len(scans) == len(json.loads(HOLDOUT.read_text(encoding="utf-8"))["fruits"])
-    some = sorted(scans)[0]
-    assert choose_scan(scans, some.lower())["fruit_id"].upper() == some
-    assert choose_scan(scans, f"UJI-{some}")["fruit_id"].upper() == some
-    assert choose_scan(scans, "GAGAL-01") is None
-    assert choose_scan(scans, "JB-0001")["fruit_id"].upper() in scans
-    print(f"esp32_simulator check OK ({len(scans)} buah holdout)")
+    fruits = json.loads(HOLDOUT.read_text(encoding="utf-8"))["fruits"]
+    assert {r["fruit_id"] for r in scans} == set(fruits)
+    assert batch_plan(10).count(False) == 1 and batch_plan(10)[FAIL_AT - 1] is False
+    assert all(batch_plan(5))
+    print(f"esp32_simulator check OK ({len(fruits)} buah holdout, {len(scans)} scan)")
 
 
 if __name__ == "__main__":

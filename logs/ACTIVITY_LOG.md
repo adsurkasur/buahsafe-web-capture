@@ -1,5 +1,16 @@
 # Activity Log
 
+### [2026-10-25 23:30] [Claude Code]
+- **Goal**: Menyesuaikan sistem dengan alat sebenarnya: belt conveyor berjalan terus, sensor PIR memicu lampu dan satu pengukuran per buah, operator memilah di ujung belt.
+- **Actions**:
+  - Server: mode `BUAHSAFE_DEVICE_MODE=conveyor`; `POST /api/device/auto-scan` (ID `CV-YYYYMMDD-NNNN` berurutan, `SIM-` untuk simulator, prediksi + simpan, gagal-aman); laporan buah gagal tetap memakai nomor urut (baris `GAGAL` dikecualikan dari ekspor); detak lewat `/api/device/poll`; `POST /api/device/simulate` (supervisor/owner); `/api/scan` manual 409 di mode conveyor; `trigger_ms`/`measure_ms` dicatat untuk kalibrasi; `/api/device/auto-scan` ditambahkan ke jalur perangkat pada guard produksi (ditemukan oleh tes).
+  - Firmware `buahsafe_wifi/` v2.1.0-conveyor: pin sesuai draf (PIR 27, relay 4), pemicu lewat interrupt, buzzer non-blocking (NORMAL 1 bip, ANOMALI 3 bip panjang, GAGAL 2 bip berulang), picu yang terlambat dilaporkan GAGAL, kenop `LAMP_SETTLE_MS`/`TRIGGER_*`/`RELAY_ACTIVE_LOW` di `config.h`.
+  - `esp32_simulator.py` mode conveyor: detak; kirim N buah holdout hanya atas permintaan web; buah ke-7 gagal.
+  - `ml/evaluate_models.py --data`; `ml/report_materials.py`: tabel tukar-ganti ambang satu scan, keterbatasan buah diam vs bergerak, diagram alur conveyor.
+  - Dokumen: `docs/DEPLOY_SERVER_WIFI.md` (arsitektur conveyor, pin, pesan LCD, kalibrasi).
+- **Files Modified**: `app.py`, `database.py`, `wifi_device.py`, `esp32_simulator.py`, `buahsafe_wifi/{buahsafe_wifi.ino,config.example.h}`, `ml/{evaluate_models,report_materials}.py`, `tests/test_conveyor.py` (baru), `docs/DEPLOY_SERVER_WIFI.md`, `logs/*`.
+- **Verification**: 76 unit (7 tes conveyor baru) + 9 auth + 6 E2E lulus; `esp32_simulator.py --check`; firmware terkompilasi (ESP32 Dev Module, 1,18 MB). Uji langsung: `../LAPORAN_UJI_PENUH_2026-10-25.md`.
+
 ### [2026-10-25 22:00] [Claude Code]
 - **Goal**: Pengujian penuh BuahSafe dengan ESP32 virtual di mini PC, evaluasi ML yang adil, dan bahan ML untuk laporan akhir.
 - **Actions**:

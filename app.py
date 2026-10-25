@@ -9,7 +9,9 @@ import platform
 import re
 import secrets
 import sys
+import threading
 import traceback
+from datetime import datetime
 from functools import wraps
 from typing import Any
 
@@ -24,6 +26,7 @@ from serial_device import (
     BuahSafeDevice,
     DeviceError,
     debug_logger,
+    parse_data_line,
 )
 
 # Konfigurasi standard Python logging dengan format yang jelas dan mudah dibaca
@@ -41,7 +44,11 @@ PRODUCTION = os.environ.get("BUAHSAFE_ENV", "").lower() == "production"
 # serial (bawaan): ESP32 di USB komputer ini. wifi: ESP32 di mitra, long-poll ke server.
 DEVICE_MODE = os.environ.get("BUAHSAFE_DEVICE_MODE", "serial").lower()
 DEVICE_KEY = os.environ.get("BUAHSAFE_DEVICE_KEY", "")
-device = WifiDevice(os.environ.get("BUAHSAFE_DEVICE_ID", "BSF-001")) if DEVICE_MODE == "wifi" else BuahSafeDevice()
+NETWORK_MODES = ("wifi", "conveyor")
+device = (WifiDevice(os.environ.get("BUAHSAFE_DEVICE_ID", "BSF-001"), DEVICE_MODE)
+          if DEVICE_MODE in NETWORK_MODES else BuahSafeDevice())
+# Nomor urut harian ID buah conveyor dibuat dan disimpan dalam satu langkah
+_auto_scan_lock = threading.Lock()
 FRUIT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,30}$")
 VALID_LABELS = {"", "normal", "anomali"}
 VALID_ROTASI = {"", "A", "B", "C", "D"}
@@ -56,7 +63,7 @@ CORS_ORIGINS = {
 }
 
 database.initialize()
-if DEVICE_MODE == "wifi" and os.environ.get("BUAHSAFE_DEVICE_LABEL"):
+if DEVICE_MODE in NETWORK_MODES and os.environ.get("BUAHSAFE_DEVICE_LABEL"):
     # Mis. "Meja Sortasi (Simulator)" agar data demo tidak tertukar dengan alat asli
     database.set_device_name(device.device_id, os.environ["BUAHSAFE_DEVICE_LABEL"])
 # Muat model saat start: muat-pertama scikit-learn dari HDD server bisa >10 s dan
@@ -98,7 +105,8 @@ def require_auth(allowed_roles: list[str] | tuple[str, ...] | None = None):
 
 # Di produksi server terbuka ke internet (Cloudflare Tunnel): endpoint warisan dasbor
 # akuisisi lokal yang tadinya tanpa token ikut diwajibkan login di sini.
-PUBLIC_PATHS = {"/api/auth/login", "/api/auth/logout", "/api/device/poll", "/api/device/result"}
+PUBLIC_PATHS = {"/api/auth/login", "/api/auth/logout", "/api/device/poll", "/api/device/result",
+                "/api/device/auto-scan"}  # endpoint perangkat dijaga X-Device-Key
 
 
 @app.before_request
@@ -201,6 +209,8 @@ def api_disconnect():
 @app.post("/api/scan")
 @require_auth(["operator", "supervisor", "owner"])
 def api_scan():
+    if DEVICE_MODE == "conveyor":
+        return jsonify({"error": "Mode conveyor: pemindaian dipicu otomatis oleh sensor saat buah lewat."}), 409
     payload = request.get_json(silent=True) or {}
     fruit_id = str(payload.get("fruit_id", "")).strip().upper()
     device_id = str(payload.get("device_id", "BSF-001")).strip()
@@ -369,7 +379,7 @@ def api_delete_user(user_id: str):
 def api_devices():
     """Daftar status armada pemindai BuahSafe."""
     devices = database.list_devices()
-    if DEVICE_MODE == "wifi":
+    if DEVICE_MODE in NETWORK_MODES:
         # Status alat WiFi diambil dari detak long-poll, bukan kolom DB yang bisa basi
         for d in devices:
             if d["id"] == device.device_id:
@@ -385,14 +395,86 @@ def _device_authorized() -> bool:
 @app.get("/api/device/poll")
 def api_device_poll():
     """Long-poll ESP32 (mode WiFi): tunggu perintah scan hingga ~10 detik."""
-    if DEVICE_MODE != "wifi":
+    if DEVICE_MODE not in NETWORK_MODES:
         return jsonify({"error": "Server tidak berjalan dalam mode WiFi"}), 404
     if not _device_authorized():
         return jsonify({"error": "Kunci perangkat tidak valid"}), 401
+    if DEVICE_MODE == "conveyor" or request.args.get("wait") == "0":
+        # Detak: langsung dijawab. {"simulate": n} hanya dipakai esp32_simulator.py.
+        count = device.heartbeat({"firmware": request.args.get("fw"), "rssi": request.args.get("rssi"),
+                                  "ip": request.args.get("ip")})
+        return (jsonify({"simulate": count}), 200) if count else ("", 204)
     command = device.poll({k: request.args.get(k) for k in ("fw", "rssi", "ip")})
     if command is None:
         return "", 204
     return jsonify(command)
+
+
+@app.post("/api/device/auto-scan")
+def api_device_auto_scan():
+    """Mode conveyor: ESP32 dipicu PIR, mengukur, lalu mengirim baris DATA ke sini.
+
+    ID buah dibuat server: CV-YYYYMMDD-NNNN (SIM-... untuk simulator). Nomor urut
+    NNNN itulah yang tampil di LCD dan di antrean web operator di ujung belt.
+    """
+    if DEVICE_MODE != "conveyor":
+        return jsonify({"error": "Server tidak berjalan dalam mode conveyor"}), 404
+    if not _device_authorized():
+        return jsonify({"error": "Kunci perangkat tidak valid"}), 401
+    payload = request.get_json(silent=True) or {}
+    fw = str(payload.get("fw") or device.status().get("firmware") or "")
+    device.record_trigger(payload.get("trigger_ms"), payload.get("measure_ms"))
+    sensor_error = str(payload.get("error") or "")[:80]
+    if not sensor_error:
+        try:
+            reading = parse_data_line(str(payload.get("line", "")))
+        except DeviceError as err:
+            return jsonify({"ok": False, "error": f"Data sensor tidak valid: {err}"}), 400
+
+    prefix = "SIM" if fw.startswith("sim") else "CV"
+    with _auto_scan_lock:
+        seq = database.next_daily_seq(prefix)
+        fruit_id = f"{prefix}-{datetime.now():%Y%m%d}-{seq:04d}"
+        if sensor_error:
+            # Buah tetap mendapat nomor urut agar antrean operator tidak bergeser satu posisi.
+            # Baris GAGAL berisi nol dan dikecualikan dari ekspor dataset (database.all_measurements).
+            database.insert_measurement(fruit_id=fruit_id, reading={"scan_no": 0, **{k: 0.0 for k in CHANNEL_KEYS}},
+                                        prediction=database.FAILED_SCAN, device_id=device.device_id)
+            debug_logger.add("WARN", "CONVEYOR", f"{fruit_id}: sensor gagal ({sensor_error})")
+            return jsonify({"ok": False, "fruit_id": fruit_id, "seq": seq, "result": database.FAILED_SCAN,
+                            "error": f"Sensor gagal ({sensor_error}); sisihkan buah."})
+        try:
+            prediction = predictor.predict(reading)
+        except Exception as pred_err:
+            # Gagal-aman: simpan spektrum tanpa putusan; alat dan layar menyuruh menyisihkan buah
+            logger.warning("Inferensi ML gagal: %s", pred_err)
+            measurement = database.insert_measurement(fruit_id=fruit_id, reading=reading, device_id=device.device_id)
+            debug_logger.add("ERROR", "ML", f"Inferensi gagal untuk {fruit_id}: {pred_err}")
+            return jsonify({"ok": False, "fruit_id": fruit_id, "seq": seq, "scan_no": measurement["scan_no"],
+                            "error": "Model tidak dapat menilai buah ini; sisihkan untuk pemeriksaan manual."}), 503
+        measurement = database.insert_measurement(
+            fruit_id=fruit_id, reading=reading, prediction=prediction["result"],
+            confidence=prediction["confidence"], device_id=device.device_id,
+        )
+    debug_logger.add("INFO", "CONVEYOR",
+                     f"{fruit_id} {prediction['result']} {prediction['confidence']}% "
+                     f"(PIR aktif {payload.get('trigger_ms')} ms, ukur {payload.get('measure_ms')} ms)")
+    return jsonify({"ok": True, "fruit_id": fruit_id, "seq": seq, "scan_no": measurement["scan_no"],
+                    "result": prediction["result"], "confidence": prediction["confidence"]})
+
+
+@app.post("/api/device/simulate")
+@require_auth(["supervisor", "owner"])
+def api_device_simulate():
+    """Minta ESP32 virtual mengirim N buah (hanya bila yang tersambung adalah simulator)."""
+    if DEVICE_MODE != "conveyor" or not device.connected or not device.is_simulator:
+        return jsonify({"error": "Simulator conveyor tidak aktif."}), 409
+    try:
+        count = max(1, min(int((request.get_json(silent=True) or {}).get("count", 10)), 30))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Jumlah buah tidak valid"}), 400
+    device.request_simulation(count)
+    return jsonify({"ok": True, "count": count}), 202
 
 
 @app.post("/api/device/result")

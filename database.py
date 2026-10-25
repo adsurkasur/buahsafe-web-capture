@@ -33,6 +33,8 @@ SCHEMA_COLUMNS = (
 )
 
 INSERT_FIELDS = ("timestamp", "fruit_id", "scan_no", *CHANNEL_KEYS)
+# Prediksi untuk buah conveyor yang gagal diukur sensor: hanya penanda urutan, bukan data spektral
+FAILED_SCAN = "GAGAL"
 
 
 def connect() -> sqlite3.Connection:
@@ -588,7 +590,7 @@ def summary() -> dict[str, int]:
 def all_measurements() -> list[dict[str, Any]]:
     with database_connection() as connection:
         rows = connection.execute(
-            "SELECT * FROM measurements ORDER BY id ASC"
+            "SELECT * FROM measurements WHERE prediction != ? ORDER BY id ASC", (FAILED_SCAN,)
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -786,6 +788,16 @@ def list_devices() -> list[dict[str, Any]]:
             "SELECT id, name, location, status, last_seen, total_scans, firmware_version, install_date FROM devices ORDER BY id ASC"
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def next_daily_seq(prefix: str) -> int:
+    """Nomor urut berikutnya untuk ID buah otomatis <prefix>-YYYYMMDD-NNNN hari ini."""
+    like = f"{prefix}-{datetime.now():%Y%m%d}-%"
+    with database_connection() as connection:
+        last = connection.execute(
+            "SELECT MAX(CAST(SUBSTR(fruit_id, -4) AS INTEGER)) FROM measurements WHERE fruit_id LIKE ?", (like,)
+        ).fetchone()[0]
+    return (last or 0) + 1
 
 
 def set_device_name(device_id: str, name: str) -> bool:

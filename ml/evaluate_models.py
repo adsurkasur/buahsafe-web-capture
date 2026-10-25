@@ -17,6 +17,8 @@ tidak bocor ke data latih dan data uji sekaligus):
 Pemakaian:
   python ml/evaluate_models.py          # model demo, dilatih 80% data
   python ml/evaluate_models.py --full   # pakai ulang hasil seleksi, latih 100% data
+  python ml/evaluate_models.py --data conveyor.csv   # tambah scan conveyor berlabel
+    (conveyor.csv = unduhan /export.csv; hanya baris berlabel normal/anomali yang dipakai)
 """
 from __future__ import annotations
 
@@ -51,6 +53,14 @@ CH18 = ["nm410", "nm435", "nm460", "nm485", "nm510", "nm535", "nm560", "nm585", 
         "nm645", "nm680", "nm705", "nm730", "nm760", "nm810", "nm860", "nm900", "nm940"]
 CH6 = ["nm610", "nm680", "nm730", "nm760", "nm810", "nm860"]
 CHANNEL_SETS = {"6 kanal": CH6, "18 kanal": CH18}
+
+
+def load_data(extra: list[str]) -> pd.DataFrame:
+    """Dataset final + CSV tambahan. Baris tanpa label atau tanpa 18 kanal dibuang."""
+    frames = [pd.read_csv(DATA)] + [pd.read_csv(path) for path in extra]
+    df = pd.concat(frames, ignore_index=True)
+    df = df[df["label"].isin(["normal", "anomali"])].dropna(subset=CH18)
+    return df.drop_duplicates(subset=["fruit_id", "timestamp"]).reset_index(drop=True)
 
 
 def candidates() -> dict[str, tuple[Pipeline, dict]]:
@@ -142,9 +152,10 @@ def run_selection(dev: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.Dat
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--full", action="store_true", help="latih model terpilih dengan 100%% data")
+    parser.add_argument("--data", action="append", default=[], help="CSV tambahan (mis. scan conveyor berlabel)")
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
-    df = pd.read_csv(DATA)
+    df = load_data(args.data)
 
     if args.full:
         meta = joblib.load(MODEL_OUT)
