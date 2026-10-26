@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-10-26 14:00] [Claude Code]
+- **Goal**: Dokumen laporan tersedia sebagai DOCX yang rapi.
+- **Actions**: Konversi Markdown ke DOCX dipisah ke `ml/md_docx.py` (dipakai `report_materials.py` dan bisa dijalankan langsung untuk berkas md lain); isi sel tabel kini diformat (tebal/miring, baris judul tebal); daftar bernomor didukung dengan nomor teks agar tidak bersambung antardaftar; butir bersarang memakai List Bullet 2.
+- **Files Modified**: `ml/md_docx.py` (baru), `ml/report_materials.py`, `logs/ACTIVITY_LOG.md`.
+- **Verification**: Tiga DOCX dibangkitkan; tidak ada sisa markup di paragraf maupun tabel; tampilan diperiksa lewat render PDF LibreOffice.
+
 ### [2026-10-26 13:00] [Claude Code]
 - **Goal**: Model dan bahan laporan diselaraskan dengan desain penelitian: hanya 6 kanal NIR (610-860 nm, setara sensor AS7263 yang rusak).
 - **Actions**: `ml/evaluate_models.py` memilih model hanya dari kandidat 6 kanal (`MAIN_SET`); 18 kanal tetap dinilai sebagai pembanding. Hasil: SVM-RBF 6 kanal, C 100, gamma scale, ambang 0,35; uji independen akurasi 73,1%, recall 66,7%, ROC-AUC 0,724; kepentingan kanal teratas 730 dan 810 nm. `ml/report_materials.py`: spektrum dan PCA memakai kanal model, tabel kandidat utama di atas pembanding, teks dan diagram tidak lagi menulis 18 kanal atau ambang tetap. Kanal 485 nm tercatat bernilai 0 pada 463/518 pemindaian. Firmware: baris kedua LCD menampilkan keyakinan model (sebelumnya mengulang putusan). Tes ambang dibuat tidak bergantung pada model aktif.

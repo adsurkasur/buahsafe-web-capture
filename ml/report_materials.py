@@ -7,7 +7,6 @@ Pemakaian: python ml/report_materials.py [folder_tujuan]
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -18,8 +17,7 @@ import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-from docx import Document  # noqa: E402
-from docx.shared import Cm  # noqa: E402
+from md_docx import md_to_docx  # noqa: E402
 from sklearn.decomposition import PCA  # noqa: E402
 from sklearn.inspection import permutation_importance  # noqa: E402
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_curve  # noqa: E402
@@ -352,52 +350,6 @@ Varma, S. dan Simon, R. 2006. Bias in error estimation when using cross-validati
 
 
 # ---------------- DOCX (dari Markdown yang sama) ----------------
-def md_to_docx(text: str, base: Path, out: Path) -> None:
-    doc = Document()
-    lines = text.splitlines()
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if line.startswith("|"):
-            block = []
-            while i < len(lines) and lines[i].startswith("|"):
-                block.append([c.strip() for c in lines[i].strip("|").split("|")])
-                i += 1
-            rows = [r for r in block if not set("".join(r)) <= {"-"}]
-            t = doc.add_table(rows=len(rows), cols=len(rows[0]))
-            t.style = "Table Grid"
-            for r, cells in enumerate(rows):
-                for c, val in enumerate(cells):
-                    t.cell(r, c).text = val.replace("**", "")
-            continue
-        m = re.match(r"!\[.*?\]\((.+?)\)", line)
-        if m:
-            doc.add_picture(str(base / m.group(1)), width=Cm(15))
-        elif line.startswith("#"):
-            level = len(line) - len(line.lstrip("#"))
-            doc.add_heading(line.lstrip("# "), level=min(level, 3))
-        elif line.startswith("- "):
-            add_runs(doc.add_paragraph(style="List Bullet"), line[2:])
-        elif line.strip():
-            add_runs(doc.add_paragraph(), line)
-        i += 1
-    doc.save(out)
-
-
-def add_runs(par, text: str) -> None:
-    for part in re.split(r"(\*\*.+?\*\*|\*[^*]+?\*|`[^`]+`)", text):
-        if not part:
-            continue
-        if part.startswith("**"):
-            par.add_run(part[2:-2]).bold = True
-        elif part.startswith("*"):
-            par.add_run(part[1:-1]).italic = True
-        elif part.startswith("`"):
-            par.add_run(part[1:-1]).font.name = "Consolas"
-        else:
-            par.add_run(part)
-
-
 md_to_docx(md, DEST, DEST / "HASIL_ML.docx")
 
 
