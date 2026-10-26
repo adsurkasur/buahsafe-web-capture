@@ -172,11 +172,16 @@ def favicon():
     return "", 204
 
 
+def device_enabled() -> bool:
+    """Pemilik dapat memutus alat (asli maupun simulator) dari web tanpa akses ke mini PC."""
+    return database.get_setting("device_enabled", "1") == "1"
+
+
 @app.get("/api/status")
 def api_status():
     return jsonify({
         "version": __version__,
-        "device": device.status(),
+        "device": {**device.status(), "enabled": device_enabled()},
         "summary": database.summary(),
         "last_raw_line": debug_logger.last_raw_line,
     })
@@ -399,6 +404,8 @@ def api_device_poll():
         return jsonify({"error": "Server tidak berjalan dalam mode WiFi"}), 404
     if not _device_authorized():
         return jsonify({"error": "Kunci perangkat tidak valid"}), 401
+    if not device_enabled():
+        return jsonify({"error": "Alat diputus oleh pemilik"}), 423
     if DEVICE_MODE == "conveyor" or request.args.get("wait") == "0":
         # Detak: langsung dijawab. {"simulate": n} hanya dipakai esp32_simulator.py.
         count = device.heartbeat({"firmware": request.args.get("fw"), "rssi": request.args.get("rssi"),
@@ -421,6 +428,8 @@ def api_device_auto_scan():
         return jsonify({"error": "Server tidak berjalan dalam mode conveyor"}), 404
     if not _device_authorized():
         return jsonify({"error": "Kunci perangkat tidak valid"}), 401
+    if not device_enabled():
+        return jsonify({"ok": False, "error": "Alat diputus oleh pemilik"}), 423
     payload = request.get_json(silent=True) or {}
     fw = str(payload.get("fw") or device.status().get("firmware") or "")
     device.record_trigger(payload.get("trigger_ms"), payload.get("measure_ms"))
@@ -461,6 +470,18 @@ def api_device_auto_scan():
                      f"(PIR aktif {payload.get('trigger_ms')} ms, ukur {payload.get('measure_ms')} ms)")
     return jsonify({"ok": True, "fruit_id": fruit_id, "seq": seq, "scan_no": measurement["scan_no"],
                     "result": prediction["result"], "confidence": prediction["confidence"]})
+
+
+@app.post("/api/device/enabled")
+@require_auth(["owner"])
+def api_device_set_enabled():
+    """Putus (false) atau sambungkan kembali (true) alat. Alat yang diputus ditolak dengan 423."""
+    enabled = bool((request.get_json(silent=True) or {}).get("enabled"))
+    database.set_setting("device_enabled", "1" if enabled else "0")
+    if not enabled and isinstance(device, WifiDevice):
+        device.mark_offline()
+    debug_logger.add("INFO", "DEVICE", f"Alat {'disambungkan' if enabled else 'diputus'} oleh {g.current_user['username']}")
+    return jsonify({"ok": True, "enabled": enabled})
 
 
 @app.post("/api/device/simulate")

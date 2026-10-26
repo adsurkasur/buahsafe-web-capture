@@ -231,6 +231,8 @@ def _init_auxiliary_tables(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    # Pengaturan kecil yang harus bertahan saat server dimulai ulang (mis. alat diputus pemilik)
+    connection.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
     device_count = connection.execute("SELECT COUNT(*) FROM devices").fetchone()[0]
     if device_count == 0:
         now_iso = datetime.now().isoformat()
@@ -798,6 +800,20 @@ def next_daily_seq(prefix: str) -> int:
             "SELECT MAX(CAST(SUBSTR(fruit_id, -4) AS INTEGER)) FROM measurements WHERE fruit_id LIKE ?", (like,)
         ).fetchone()[0]
     return (last or 0) + 1
+
+
+def get_setting(key: str, default: str = "") -> str:
+    with database_connection() as connection:
+        row = connection.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    with database_connection() as connection:
+        connection.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
 
 
 def set_device_name(device_id: str, name: str) -> bool:

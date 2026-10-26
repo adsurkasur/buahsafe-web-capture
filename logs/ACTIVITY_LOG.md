@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-10-26 10:30] [Claude Code]
+- **Goal**: Pemilik dapat memutus dan menyambungkan kembali alat dari web; label LCD diselaraskan dengan web.
+- **Actions**: Tabel `app_settings` + `get_setting`/`set_setting`; `POST /api/device/enabled` (pemilik saja); detak dan auto-scan ditolak 423 saat alat diputus, status langsung offline (`WifiDevice.mark_offline`); `/api/status` memuat `device.enabled`. Firmware: LCD "Alat diputus / oleh pemilik" pada 423; hasil di LCD menjadi NORMAL / ANOMALI / "GAGAL: sisihkan".
+- **Files Modified**: `app.py`, `database.py`, `wifi_device.py`, `buahsafe_wifi/buahsafe_wifi.ino`, `tests/test_conveyor.py`, `logs/*`.
+- **Verification**: 77 unit (tes baru `test_owner_can_disconnect_device`) + 9 auth + 6 E2E lulus; firmware terkompilasi (ESP32 Dev Module, 1,18 MB).
+
 ### [2026-10-26 01:45] [Claude Code]
 - **Goal**: Teks bahan laporan ML ke ragam akademik.
 - **Actions**: Templat teks `HASIL_ML.md` di `ml/report_materials.py` ditulis ulang ke ragam ilmiah dengan sitasi metode dan Daftar Pustaka (dikerjakan sesi paralel "ragam akademik"); perhitungan tidak berubah. Seluruh DOI diverifikasi lewat Crossref (15/15).

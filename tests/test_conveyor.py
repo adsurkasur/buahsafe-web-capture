@@ -71,6 +71,20 @@ class TestConveyor(unittest.TestCase):
         self.assertNotIn(fail["fruit_id"], exported)
         self.assertIn(after["fruit_id"], exported)
 
+    def test_owner_can_disconnect_device(self):
+        owner = {"Authorization": f"Bearer {database.create_session_token('u-ow-1', 'owner')}"}
+        self.client.get("/api/device/poll?fw=2.1.0-conveyor", headers=DEV)
+        self.assertEqual(self.client.post("/api/device/enabled", json={"enabled": False}, headers=self.spv).status_code, 403)
+        self.assertEqual(self.client.post("/api/device/enabled", json={"enabled": False}, headers=owner).status_code, 200)
+        try:
+            self.assertFalse(self.dev.connected)
+            self.assertEqual(self.client.get("/api/device/poll", headers=DEV).status_code, 423)
+            self.assertEqual(self.scan().status_code, 423)
+            self.assertFalse(self.client.get("/api/status", headers=owner).get_json()["device"]["enabled"])
+        finally:
+            self.client.post("/api/device/enabled", json={"enabled": True}, headers=owner)
+        self.assertEqual(self.client.get("/api/device/poll", headers=DEV).status_code, 204)
+
     def test_manual_scan_disabled(self):
         res = self.client.post("/api/scan", json={"fruit_id": "JB-1"}, headers=self.op)
         self.assertEqual(res.status_code, 409)

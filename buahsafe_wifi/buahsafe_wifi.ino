@@ -300,17 +300,17 @@ void reportFruit(const char *line, const char *error, uint32_t triggerMs, uint32
   char line1[17];
   if (code == 200 && result == "NORMAL") {
     snprintf(line1, sizeof(line1), "#%s NORMAL", seq.c_str());
-    setLcdLines(line1, "Keranjang HIJAU");
+    setLcdLines(line1, "NORMAL");
     playTone(BEEP_NORMAL);
   } else if (code == 200 && result == "ANOMALI") {
     snprintf(line1, sizeof(line1), "#%s ANOMALI", seq.c_str());
-    setLcdLines(line1, "Keranjang MERAH");
+    setLcdLines(line1, "ANOMALI");
     playTone(BEEP_ANOMALI);
   } else {
     // Gagal ukur, model gagal, atau server tak terjangkau: buah disisihkan, tidak ditebak
     if (seq.length()) snprintf(line1, sizeof(line1), "#%s GAGAL", seq.c_str());
     else snprintf(line1, sizeof(line1), "GAGAL KIRIM %d", code);
-    setLcdLines(line1, "Sisihkan buah");
+    setLcdLines(line1, "GAGAL: sisihkan");
     playTone(BEEP_FAILED);
   }
 }
@@ -324,6 +324,7 @@ void heartbeat() {
   const int code = http.GET();
   http.end();
   if (code == 401) setLcdLines("Kunci alat salah", "Hubungi admin");
+  else if (code == 423) setLcdLines("Alat diputus", "oleh pemilik");  // Pengaturan > Perangkat di web
   else if (code != 204 && code != 200) {
     char line2[17];
     snprintf(line2, sizeof(line2), "Server: %d", code);  // negatif = galat koneksi/TLS

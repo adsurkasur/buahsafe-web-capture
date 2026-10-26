@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - 2026-10-26 (putus alat)
+### Added
+- `POST /api/device/enabled` untuk memutus/menyambungkan alat oleh pemilik; status `enabled` di `/api/status`.
+
+### Changed
+- Teks hasil di LCD firmware: NORMAL, ANOMALI, "GAGAL: sisihkan".
+
 ## [Unreleased] - 2026-10-25 (conveyor)
 ### Added
 - Mode conveyor: `/api/device/auto-scan`, `/api/device/simulate`, detak perangkat, nomor urut harian buah.

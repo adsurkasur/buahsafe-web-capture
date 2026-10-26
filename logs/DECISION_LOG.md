@@ -1,5 +1,12 @@
 # Decision Log (Architecture Decision Records)
 
+### [DEC-009] Saklar Putus Alat Disimpan di Server, Bukan di Alat
+- **Date**: 2026-10-26
+- **Status**: Accepted
+- **Context**: Pemilik perlu menghentikan alat (asli atau simulator) tanpa akses SSH ke mini PC atau ke alat fisik.
+- **Decision**: Status `device_enabled` disimpan di tabel `app_settings` SQLite sehingga bertahan saat server dimulai ulang; server menolak detak dan auto-scan dengan 423, dan firmware menampilkan pesannya di LCD.
+- **Alternatives**: Mencabut kunci perangkat di berkas env (ditolak: perlu SSH dan restart); perintah matikan ke ESP32 (ditolak: alat yang tidak terjangkau tetap mengirim).
+
 ### [DEC-008] Mode Conveyor: Alat Memicu Scan Sendiri, Server Memberi Nomor Urut
 - **Date**: 2026-10-25
 - **Status**: Accepted (menggantikan alur scan-diperintah-web pada DEC-006 untuk produksi)

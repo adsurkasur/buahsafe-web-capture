@@ -127,6 +127,10 @@ class WifiDevice:
             count, self._simulate = self._simulate, 0
         return count
 
+    def mark_offline(self) -> None:
+        """Dipakai saat pemilik memutus alat: status langsung offline, tanpa menunggu batas detak."""
+        self._last_seen = 0.0
+
     @property
     def is_simulator(self) -> bool:
         return str(self._info.get("firmware") or "").startswith("sim")
