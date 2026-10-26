@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-10-26 13:00] [Claude Code]
+- **Goal**: Model dan bahan laporan diselaraskan dengan desain penelitian: hanya 6 kanal NIR (610-860 nm, setara sensor AS7263 yang rusak).
+- **Actions**: `ml/evaluate_models.py` memilih model hanya dari kandidat 6 kanal (`MAIN_SET`); 18 kanal tetap dinilai sebagai pembanding. Hasil: SVM-RBF 6 kanal, C 100, gamma scale, ambang 0,35; uji independen akurasi 73,1%, recall 66,7%, ROC-AUC 0,724; kepentingan kanal teratas 730 dan 810 nm. `ml/report_materials.py`: spektrum dan PCA memakai kanal model, tabel kandidat utama di atas pembanding, teks dan diagram tidak lagi menulis 18 kanal atau ambang tetap. Kanal 485 nm tercatat bernilai 0 pada 463/518 pemindaian. Firmware: baris kedua LCD menampilkan keyakinan model (sebelumnya mengulang putusan). Tes ambang dibuat tidak bergantung pada model aktif.
+- **Files Modified**: `ml/evaluate_models.py`, `ml/report_materials.py`, `ml/output/*`, `models/buahsafe_model.joblib`, `buahsafe_wifi/buahsafe_wifi.ino`, `docs/DEPLOY_SERVER_WIFI.md`, `tests/test_server_api.py`, `logs/*`.
+- **Verification**: 77 unit + 9 auth + E2E sandbox lulus; `esp32_simulator.py --check` OK (holdout tetap 13 buah yang sama); firmware terkompilasi.
+
 ### [2026-10-26 10:30] [Claude Code]
 - **Goal**: Pemilik dapat memutus dan menyambungkan kembali alat dari web; label LCD diselaraskan dengan web.
 - **Actions**: Tabel `app_settings` + `get_setting`/`set_setting`; `POST /api/device/enabled` (pemilik saja); detak dan auto-scan ditolak 423 saat alat diputus, status langsung offline (`WifiDevice.mark_offline`); `/api/status` memuat `device.enabled`. Firmware: LCD "Alat diputus / oleh pemilik" pada 423; hasil di LCD menjadi NORMAL / ANOMALI / "GAGAL: sisihkan".

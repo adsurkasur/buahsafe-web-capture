@@ -7,7 +7,9 @@ tidak bocor ke data latih dan data uji sekaligus):
   2. Nested CV pada 80% sisanya: luar 5-fold untuk menilai, dalam 4-fold
      GridSearchCV (scoring F1) untuk tuning. Kandidat: LR, SVM-RBF, RF x
      (6 kanal, 18 kanal).
-  3. Pilih kandidat dengan F1 nested tertinggi. Ambang probabilitas anomali
+  3. Pilih kandidat 6 kanal NIR (610-860 nm, setara sensor AS7263 dan chip
+     AS72651) dengan F1 nested tertinggi; 18 kanal hanya pembanding. Kanal
+     visible 485 nm bernilai 0 pada sebagian besar scan. Ambang probabilitas anomali
      dipilih dari prediksi out-of-fold: ambang TERTINGGI yang masih memberi
      recall anomali >= RECALL_TARGET (buah busuk yang lolos lebih mahal
      daripada buah sehat yang diperiksa ulang).
@@ -53,6 +55,7 @@ CH18 = ["nm410", "nm435", "nm460", "nm485", "nm510", "nm535", "nm560", "nm585", 
         "nm645", "nm680", "nm705", "nm730", "nm760", "nm810", "nm860", "nm900", "nm940"]
 CH6 = ["nm610", "nm680", "nm730", "nm760", "nm810", "nm860"]
 CHANNEL_SETS = {"6 kanal": CH6, "18 kanal": CH18}
+MAIN_SET = "6 kanal"  # desain penelitian: hanya kanal NIR; 18 kanal sebagai pembanding
 
 
 def load_data(extra: list[str]) -> pd.DataFrame:
@@ -180,7 +183,7 @@ def main() -> None:
 
     print("Nested CV (luar 5-fold, dalam 4-fold, per buah):")
     folds, summary, oof = run_selection(dev)
-    best = summary.iloc[0]
+    best = summary[summary["channels"] == MAIN_SET].iloc[0]
     name, set_name = best["model"], best["channels"]
     channels = CHANNEL_SETS[set_name]
     best_oof = oof[(oof["model"] == name) & (oof["channels"] == set_name)]

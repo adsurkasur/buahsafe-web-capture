@@ -96,8 +96,9 @@ arduino-cli upload --fqbn esp32:esp32:esp32 -p COM5 buahsafe_wifi
 | `Server tdk jawab / Server: -1` | Tidak ada internet atau galat TLS | Periksa internet mitra |
 | `Server tdk jawab / Server: 502` | Tunnel jalan, backend mati | `sudo systemctl restart buahsafe` |
 | `Kunci alat salah` | `config.h` tidak sama dengan server | Samakan `BUAHSAFE_DEVICE_KEY` |
-| `#57 NORMAL / Keranjang HIJAU` (1 bip) | Buah ke-57 lolos | Masukkan ke keranjang hijau |
-| `#57 ANOMALI / Keranjang MERAH` (3 bip panjang) | Buah ke-57 terindikasi rusak | Pisahkan ke keranjang merah |
+| `#57 NORMAL / Yakin 84%` (1 bip) | Buah ke-57 normal | Masukkan ke keranjang normal |
+| `#57 ANOMALI / Yakin 91%` (3 bip panjang) | Buah ke-57 terindikasi rusak | Masukkan ke keranjang anomali |
+| `Alat diputus / oleh pemilik` | Pemilik memutus alat di web | Sambungkan lagi di Pengaturan > Perangkat |
 | `#57 GAGAL / Sisihkan buah` (2 bip berulang) | Sensor gagal, buah lewat saat alat sibuk, atau model gagal | Sisihkan untuk diperiksa manual |
 | `GAGAL KIRIM -1 / Sisihkan buah` | Server tak terjangkau; buah tidak bernomor | Sisihkan buah; hentikan belt sampai internet pulih |
 | `ERROR AS7265x` | Sensor tidak terbaca | Periksa kabel I2C sensor |

@@ -67,9 +67,11 @@ class TestServerAPI(unittest.TestCase):
         from unittest.mock import patch
         sample = {ch: 30.0 for ch in predictor.ALL_18_CHANNELS}
         artifact = predictor.load_model()
-        with patch.dict(artifact, {"threshold": 0.001}):
+        # Ambang tepat di bawah/di atas probabilitas sampel ini (tidak bergantung pada model yang aktif)
+        prob = predictor.predict(sample)["probabilities"]["anomali"] / 100
+        with patch.dict(artifact, {"threshold": prob - 0.01}):
             self.assertEqual(predictor.predict(sample)["result"], "ANOMALI")
-        with patch.dict(artifact, {"threshold": 0.999}):
+        with patch.dict(artifact, {"threshold": prob + 0.01}):
             self.assertEqual(predictor.predict(sample)["result"], "NORMAL")
 
     def test_api_devices(self):

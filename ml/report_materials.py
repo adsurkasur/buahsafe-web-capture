@@ -42,12 +42,12 @@ hold_pred = pd.read_csv(ML_OUT / "holdout_predictions.csv")
 art = joblib.load(ROOT / "models" / "buahsafe_model.joblib")
 CH = res["channels"]
 WL = [int(c[2:]) for c in CH]
-ALL18 = [c for c in df.columns if re.fullmatch(r"nm\d+", c)]
 THR = res["threshold"]
 H = res["holdout"]["threshold"]
 best_oof = oof[(oof["model"] == res["model_name"]) & (oof["channels"] == res["channel_set"])]
 hold = df[df["fruit_id"].isin(res["dataset"]["holdout_fruits"])].reset_index(drop=True)
 y_hold = (hold["label"] == "anomali").astype(int).to_numpy()
+INFER_MS = 16  # diukur di server t530 (predictor.predict, rata-rata 50 kali)
 pct = lambda v: f"{v * 100:.1f}%".replace(".", ",")  # noqa: E731
 num = lambda v, d=3: f"{v:.{d}f}".replace(".", ",")  # noqa: E731
 
@@ -63,20 +63,19 @@ def save(fig, name: str) -> str:
 figs: dict[str, str] = {}
 
 fig, ax = plt.subplots(figsize=(8, 4.5))
-wl18 = [int(c[2:]) for c in ALL18]
 for label, color, name in (("normal", GREEN, "Normal"), ("anomali", RED, "Anomali")):
-    part = df[df["label"] == label][ALL18]
-    ax.plot(wl18, part.mean(), "-o", color=color, ms=4, label=f"{name} (n = {len(part)} scan)")
-    ax.fill_between(wl18, part.mean() - part.std(), part.mean() + part.std(), color=color, alpha=0.15)
+    part = df[df["label"] == label][CH]
+    ax.plot(WL, part.mean(), "-o", color=color, ms=4, label=f"{name} (n = {len(part)} scan)")
+    ax.fill_between(WL, part.mean() - part.std(), part.mean() + part.std(), color=color, alpha=0.15)
 for w in (730, 810):
     ax.axvline(w, color=GREY, ls="--", lw=0.8)
 ax.set_xlabel("Panjang gelombang (nm)")
 ax.set_ylabel("Intensitas transmisi (satuan terkalibrasi sensor)")
-ax.set_title("Rata-rata spektrum intensitas transmisi per kelas (± simpangan baku)")
+ax.set_title(f"Rata-rata intensitas transmisi {len(CH)} kanal NIR per kelas (± simpangan baku)")
 ax.legend()
 figs["spektrum"] = save(fig, "01_spektrum_intensitas_transmisi.png")
 
-Xs = StandardScaler().fit_transform(df[ALL18])
+Xs = StandardScaler().fit_transform(df[CH])
 pca = PCA(n_components=2).fit(Xs)
 P = pca.transform(Xs)
 fig, ax = plt.subplots(figsize=(6, 5))
@@ -85,9 +84,11 @@ for label, color, name in (("normal", GREEN, "Normal"), ("anomali", RED, "Anomal
     ax.scatter(P[m, 0], P[m, 1], s=12, alpha=0.6, color=color, label=name)
 ax.set_xlabel(f"Komponen utama 1 ({pca.explained_variance_ratio_[0] * 100:.1f}% variasi)")
 ax.set_ylabel(f"Komponen utama 2 ({pca.explained_variance_ratio_[1] * 100:.1f}% variasi)")
-ax.set_title("Sebaran 518 scan pada dua komponen utama (PCA, 18 kanal)")
+ax.set_title(f"Sebaran {len(df)} scan pada dua komponen utama (PCA, {res['channel_set']} NIR)")
 ax.legend()
-figs["pca"] = save(fig, "02_pca_18_kanal.png")
+for old in FIG.glob("02_pca_*.png"):
+    old.unlink()
+figs["pca"] = save(fig, f"02_pca_{res['channel_set'].replace(' ', '_')}.png")
 
 fig, ax = plt.subplots(figsize=(8.5, 4.5))
 order = summary.sort_values(["channels", "model"])
@@ -194,15 +195,19 @@ def table(frame: pd.DataFrame) -> str:
     return head + "".join("| " + " | ".join(str(v) for v in row) + " |\n" for row in frame.itertuples(index=False))
 
 
-comp = summary.copy()
+# Kanal utama (NIR) di atas, pembanding 18 kanal di bawah; masing-masing urut F1
+comp = summary.assign(_main=summary["channels"] != res["channel_set"]).sort_values(["_main", "f1_mean"], ascending=[True, False])
 comp_tbl = pd.DataFrame({
-    "Model": comp["model"], "Kanal": comp["channels"],
+    "Model": comp["model"],
+    "Kanal": [f"{c} NIR (utama)" if c == res["channel_set"] else f"{c} (pembanding)" for c in comp["channels"]],
     "Akurasi": [f"{pct(m)} ± {pct(s)}" for m, s in zip(comp["accuracy_mean"], comp["accuracy_std"])],
     "Presisi": [pct(v) for v in comp["precision_mean"]],
     "Recall": [pct(v) for v in comp["recall_mean"]],
     "F1": [f"{num(m)} ± {num(s)}" for m, s in zip(comp["f1_mean"], comp["f1_std"])],
     "ROC-AUC": [num(v) for v in comp["roc_auc_mean"]],
 })
+best18 = comp[comp["channels"] == "18 kanal"].iloc[0]
+res_std = float(comp[(comp["model"] == res["model_name"]) & (comp["channels"] == res["channel_set"])]["f1_std"].iloc[0])
 O = res["nested_cv_oof_at_threshold"]
 D = res["holdout"]["default_0.5"]
 eval_tbl = pd.DataFrame({
@@ -224,7 +229,7 @@ fruit_tbl = per_fruit.assign(rata_prob=per_fruit["rata_prob"].map(num),
 fruit_tbl.columns = ["ID buah", "Kondisi sebenarnya", "Sisi diputus anomali", "Rata-rata prob. anomali", "Putusan dari rata-rata"]
 anom_f = per_fruit[per_fruit["label"] == "anomali"]
 norm_f = per_fruit[per_fruit["label"] == "normal"]
-top = imp.sort_values("penurunan_auc", ascending=False).head(4)
+top = imp.sort_values("penurunan_auc", ascending=False).head(3)
 
 md = f"""# Hasil pembelajaran mesin BuahSafe
 
@@ -233,35 +238,36 @@ Dokumen ini dibangkitkan otomatis oleh `buahsafe-web-capture/ml/report_materials
 ## 1. Data
 
 - Data terdiri atas {res['dataset']['scans']} pemindaian dari {res['dataset']['fruits']} buah jambu kristal ({int((fruits == 'normal').sum())} normal, {int((fruits == 'anomali').sum())} anomali). Setiap buah dipindai pada 8 sisi dengan rotasi 45°, kecuali satu buah (AMAN_010) yang hanya 6 sisi.
-- Fitur berupa intensitas transmisi terkalibrasi sensor AS7265x pada 18 kanal (410 sampai 940 nm). Label ditetapkan dari hasil pembelahan buah setelah gejala kerusakan muncul.
+- Fitur berupa intensitas transmisi terkalibrasi pada **{len(CH)} kanal NIR ({', '.join(str(w) for w in WL)} nm)**. Kanal ini sama dengan kanal sensor NIR AS7263 yang direncanakan; karena sensor tersebut rusak, pengukuran memakai AS7265x yang chip AS72651-nya membaca keenam kanal yang sama. AS7265x juga merekam kanal cahaya tampak, tetapi kanal tersebut tidak dipakai. Salah satunya, 485 nm, bernilai 0 pada {int((df['nm485'] == 0).sum())} dari {len(df)} pemindaian, sehingga tidak layak menjadi fitur.
+- Label ditetapkan dari hasil pembelahan buah setelah gejala kerusakan muncul.
 - Data dibagi per buah, bukan per pemindaian, agar sisi lain dari buah yang sama tidak masuk ke data uji. Pemisahan kelompok ini mencegah kebocoran data (Kapoor dan Narayanan, 2023; Roberts *et al.*, 2017). Sebanyak {res['dataset']['dev_fruits']} buah ({len(df) - len(hold)} pemindaian) dipakai untuk pelatihan dan pemilihan model, sedangkan {len(res['dataset']['holdout_fruits'])} buah ({len(hold)} pemindaian; {int((hold.groupby('fruit_id')['label'].first() == 'normal').sum())} normal, {int((hold.groupby('fruit_id')['label'].first() == 'anomali').sum())} anomali) disisihkan sebagai **data uji independen** yang hanya dipakai sekali pada tahap akhir.
 - Pra-pengolahan hanya berupa standardisasi z-score (StandardScaler) untuk LR dan SVM; RF dipakai tanpa standardisasi. Penghalusan, SNV, MSC, dan Savitzky-Golay tidak dipakai.
 
 ![Rata-rata spektrum]({figs['spektrum']})
 
-*Gambar A. Rata-rata spektrum intensitas transmisi jambu normal dan anomali (± simpangan baku). Garis putus-putus menandai 730 dan 810 nm.*
+*Gambar A. Rata-rata intensitas transmisi {len(CH)} kanal NIR jambu normal dan anomali (± simpangan baku). Garis putus-putus menandai 730 dan 810 nm.*
 
 ![PCA]({figs['pca']})
 
-*Gambar B. Proyeksi {res['dataset']['scans']} pemindaian pada dua komponen utama. Kedua kelas bertumpang tindih, sehingga diperlukan pemisah nonlinear.*
+*Gambar B. Proyeksi {res['dataset']['scans']} pemindaian ({len(CH)} kanal NIR) pada dua komponen utama. Kedua kelas bertumpang tindih, sehingga diperlukan pemisah nonlinear.*
 
 ## 2. Metode pemilihan model
 
-- Kandidat terdiri atas Logistic Regression (LR), Support Vector Machine kernel RBF (SVM; Cortes dan Vapnik, 1995), dan Random Forest (RF; Breiman, 2001), masing-masing pada 6 kanal (610, 680, 730, 760, 810, 860 nm) dan 18 kanal.
+- Kandidat terdiri atas Logistic Regression (LR), Support Vector Machine kernel RBF (SVM; Cortes dan Vapnik, 1995), dan Random Forest (RF; Breiman, 2001), masing-masing dilatih pada {len(CH)} kanal NIR. Sebagai pembanding, ketiganya juga dinilai pada 18 kanal AS7265x untuk melihat apakah kanal cahaya tampak menambah informasi.
 - Penilaian memakai validasi silang bersarang per buah (StratifiedGroupKFold): 5 lipatan luar untuk menilai kinerja dan 4 lipatan dalam untuk mencari hiperparameter (GridSearchCV, skor F1). Pemisahan ini mencegah bias optimistis akibat pemilihan hiperparameter pada data penilaian (Varma dan Simon, 2006).
-- Model dipilih menurut F1 tertinggi pada lipatan luar, karena akurasi saja tidak membedakan jenis kesalahan (Chicco dan Jurman, 2020). Ambang probabilitas anomali dipilih dari prediksi out-of-fold sebagai ambang tertinggi yang masih memberi recall anomali ≥ {pct(res['recall_target'])}. Dasarnya, biaya buah busuk yang lolos ke keranjang hijau lebih besar daripada biaya pemeriksaan ulang buah sehat, dan titik operasi sebaiknya mengikuti perbandingan biaya kesalahan (Provost dan Fawcett, 2001).
+- Model dipilih menurut F1 tertinggi pada lipatan luar di antara kandidat {len(CH)} kanal NIR, karena akurasi saja tidak membedakan jenis kesalahan (Chicco dan Jurman, 2020). Ambang probabilitas anomali dipilih dari prediksi out-of-fold sebagai ambang tertinggi yang masih memberi recall anomali ≥ {pct(res['recall_target'])}. Dasarnya, biaya buah busuk yang lolos ke keranjang hijau lebih besar daripada biaya pemeriksaan ulang buah sehat, dan titik operasi sebaiknya mengikuti perbandingan biaya kesalahan (Provost dan Fawcett, 2001).
 - Model akhir dilatih ulang pada seluruh data pelatihan dengan hiperparameter terbaik ({', '.join(f'{k.split("__")[1]} = {v}' for k, v in res['params'].items())}), lalu diuji sekali pada data uji independen.
 
 ## 3. Perbandingan model (validasi silang bersarang, ambang 0,50)
 
-Tabel A. Rata-rata ± simpangan baku 5 lipatan luar, diurutkan menurut F1.
+Tabel A. Rata-rata ± simpangan baku 5 lipatan luar. Kandidat utama {len(CH)} kanal NIR di atas, pembanding 18 kanal di bawah, masing-masing diurutkan menurut F1.
 
 {table(comp_tbl)}
 ![Perbandingan model]({figs['perbandingan']})
 
 *Gambar C. Akurasi, F1, dan ROC-AUC tiap kandidat.*
 
-Model terpilih adalah **{res['model_name']} {res['channel_set']}** (F1 {num(res['nested_cv_mean']['f1'])}). Selisihnya dengan SVM 6 kanal (F1 {num(float(comp[(comp['model'] == 'SVM (RBF)') & (comp['channels'] == '6 kanal')]['f1_mean'].iloc[0]))}) lebih kecil daripada simpangan baku antarlipatan, sehingga keunggulan 18 kanal belum dapat dinyatakan bermakna. LR konsisten paling rendah, sesuai dengan tumpang tindih kelas pada Gambar B.
+Model terpilih adalah **{res['model_name']} {res['channel_set']} NIR** (F1 {num(res['nested_cv_mean']['f1'])} ± {num(res_std)}). Pembanding terbaik pada 18 kanal mencapai F1 {num(best18['f1_mean'])} ± {num(best18['f1_std'])}; selisihnya lebih kecil daripada simpangan baku antarlipatan, sehingga penambahan kanal cahaya tampak tidak memberi peningkatan yang bermakna. LR konsisten paling rendah, sesuai dengan tumpang tindih kelas pada Gambar B.
 
 ## 4. Ambang keputusan
 
@@ -306,12 +312,12 @@ Dengan merata-ratakan semua sisi, **{fruit_correct} dari {len(per_fruit)} buah**
 
 *Gambar H. Penurunan ROC-AUC ketika nilai satu kanal diacak (permutation importance, 30 ulangan, data uji independen). Batang merah menandai 730 dan 810 nm.*
 
-Empat kanal paling berpengaruh adalah {', '.join(f"{k} ({num(v)})" for k, v in zip(top['kanal'], top['penurunan_auc']))}.
+Urutan kanal NIR menurut pengaruhnya; tiga teratas adalah {', '.join(f"{k} ({num(v)})" for k, v in zip(top['kanal'], top['penurunan_auc']))}.
 
 ## 7. Kinerja di server
 
 - Pada alat conveyor, sensor PIR memicu lampu halogen dan satu pengukuran saat buah lewat. Hasil ditampilkan pada antrean web operator di ujung belt serta pada LCD dan buzzer alat.
-- Model berjalan di server HP t530 (AMD GX-215JJ 2 inti 1,5 GHz, Python 3.14, scikit-learn 1.9.0). Waktu inferensi 16 ms per pemindaian; satu siklus pemindaian melalui internet berlangsung sekitar 4 sampai 5 detik, terutama karena pemanasan lampu halogen selama 3 detik.
+- Model berjalan di server HP t530 (AMD GX-215JJ 2 inti 1,5 GHz, Python 3.14, scikit-learn 1.9.0). Waktu inferensi sekitar {INFER_MS} ms per pemindaian; satu siklus pemindaian melalui internet berlangsung sekitar 4 sampai 5 detik, terutama karena pemanasan lampu halogen selama 3 detik.
 - Prediksi server identik dengan prediksi komputer pengembang untuk 20 pemindaian uji.
 - Model demo saat ini dilatih dengan 80% buah agar data uji independen tetap bersih. Sebelum dipakai dengan alat fisik di mitra, model dilatih ulang dengan seluruh {res['dataset']['fruits']} buah (`python ml/evaluate_models.py --full`).
 
@@ -423,19 +429,19 @@ def flow(steps: list[tuple[str, str]], name: str, title: str, per_row: int = 4) 
 
 flow([("Masuk belt", "Buah diletakkan di conveyor | yang terus berjalan"),
       ("Terdeteksi", "Sensor PIR memicu | lampu halogen menyala"),
-      ("Diukur", "AS7265x membaca cahaya | tembus 18 warna, sekali lewat"),
+      ("Diukur", "Sensor membaca cahaya tembus | 6 kanal NIR, sekali lewat"),
       ("Dikirim", "ESP32 mengirim lewat WiFi | mitra dan internet (HTTPS)"),
-      ("Dinilai", "Server mini PC menjalankan | model ML (16 ms)"),
+      ("Dinilai", f"Server mini PC menjalankan | model ML ({INFER_MS} ms)"),
       ("Disimpan", "Hasil masuk database | di server (backup harian)"),
       ("Ditampilkan", "Antrean web + LCD + bunyi | dengan nomor urut buah"),
-      ("Dipilah", "Operator di ujung belt: | keranjang HIJAU atau MERAH")],
+      ("Dipilah", "Operator di ujung belt: | keranjang normal atau anomali")],
      "09_alur_satu_buah.png", "Perjalanan satu buah jambu di sistem BuahSafe")
 flow([("Kumpulkan", "65 buah dipindai | 8 sisi = 518 scan"),
       ("Beri kunci jawaban", "Buah disimpan sampai | rusak tampak, lalu dibelah"),
       ("Sisihkan ujian", "13 buah disimpan untuk | ujian akhir, tidak dilihat"),
-      ("Latih & bandingkan", "52 buah: 6 kandidat model | dinilai bergiliran per buah"),
-      ("Pilih", "F1 tertinggi: | SVM 18 kanal"),
-      ("Atur ambang", "Ambang 0,45 agar buah busuk | lebih jarang lolos"),
+      ("Latih & bandingkan", "52 buah: LR, SVM, RF | dinilai bergiliran per buah"),
+      ("Pilih", f"F1 tertinggi: | SVM {res['channel_set']} NIR"),
+      ("Atur ambang", f"Ambang {num(THR, 2)} agar buah busuk | lebih jarang lolos"),
       ("Ujian akhir", "Diuji sekali pada | 13 buah tersimpan"),
       ("Pasang", "Model dipasang di server; | kelak dilatih ulang 65 buah")],
      "10_alur_melatih_model.png", "Bagaimana model BuahSafe dilatih dan diuji")

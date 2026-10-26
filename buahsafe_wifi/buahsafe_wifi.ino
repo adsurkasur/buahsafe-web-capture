@@ -297,20 +297,21 @@ void reportFruit(const char *line, const char *error, uint32_t triggerMs, uint32
 
   const String seq = jsonField(response, "seq");
   const String result = jsonField(response, "result");
-  char line1[17];
+  char line1[17], line2[17];
+  snprintf(line2, sizeof(line2), "Yakin %s%%", jsonField(response, "confidence").c_str());
   if (code == 200 && result == "NORMAL") {
     snprintf(line1, sizeof(line1), "#%s NORMAL", seq.c_str());
-    setLcdLines(line1, "NORMAL");
+    setLcdLines(line1, line2);
     playTone(BEEP_NORMAL);
   } else if (code == 200 && result == "ANOMALI") {
     snprintf(line1, sizeof(line1), "#%s ANOMALI", seq.c_str());
-    setLcdLines(line1, "ANOMALI");
+    setLcdLines(line1, line2);
     playTone(BEEP_ANOMALI);
   } else {
     // Gagal ukur, model gagal, atau server tak terjangkau: buah disisihkan, tidak ditebak
     if (seq.length()) snprintf(line1, sizeof(line1), "#%s GAGAL", seq.c_str());
     else snprintf(line1, sizeof(line1), "GAGAL KIRIM %d", code);
-    setLcdLines(line1, "GAGAL: sisihkan");
+    setLcdLines(line1, "Sisihkan buah");
     playTone(BEEP_FAILED);
   }
 }

@@ -1,5 +1,12 @@
 # Decision Log (Architecture Decision Records)
 
+### [DEC-010] Model Produksi Hanya Memakai 6 Kanal NIR
+- **Date**: 2026-10-26
+- **Status**: Accepted (menggantikan pemilihan SVM 18 kanal pada seleksi 2026-10-25)
+- **Context**: Rancangan penelitian dan laporan monev memakai sensor NIR AS7263 (6 kanal). Sensor itu rusak sehingga data diambil dengan AS7265x milik dosen (18 kanal). Seleksi sebelumnya memilih 18 kanal karena F1 tertinggi, tidak sesuai rancangan.
+- **Decision**: Pemilihan model dibatasi pada 6 kanal AS72651 (610, 680, 730, 760, 810, 860 nm); 18 kanal hanya pembanding.
+- **Rationale**: Selisih F1 (0,769 vs 0,785) lebih kecil dari simpangan baku antarlipatan; kanal 485 nm bernilai 0 pada 89% pemindaian; kepentingan kanal model 6 kanal terpusat di 730 dan 810 nm sesuai teori NIR. Uji independen 6 kanal tidak lebih buruk (akurasi 73,1% vs 70,2%, recall 66,7% vs 62,5%), walau ROC-AUC lebih rendah (0,724 vs 0,809).
+
 ### [DEC-009] Saklar Putus Alat Disimpan di Server, Bukan di Alat
 - **Date**: 2026-10-26
 - **Status**: Accepted
