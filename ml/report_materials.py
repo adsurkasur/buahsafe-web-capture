@@ -47,7 +47,7 @@ H = res["holdout"]["threshold"]
 best_oof = oof[(oof["model"] == res["model_name"]) & (oof["channels"] == res["channel_set"])]
 hold = df[df["fruit_id"].isin(res["dataset"]["holdout_fruits"])].reset_index(drop=True)
 y_hold = (hold["label"] == "anomali").astype(int).to_numpy()
-INFER_MS = 16  # diukur di server t530 (predictor.predict, rata-rata 50 kali)
+INFER_MS = "1,3"  # diukur di server t530 (predictor.predict, rata-rata 50 kali, model 6 kanal)
 pct = lambda v: f"{v * 100:.1f}%".replace(".", ",")  # noqa: E731
 num = lambda v, d=3: f"{v:.{d}f}".replace(".", ",")  # noqa: E731
 
