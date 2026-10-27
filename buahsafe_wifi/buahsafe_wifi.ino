@@ -22,22 +22,29 @@
 //
 // Protokol server:
 //   GET  /api/device/poll?fw=..       detak tiap 10 dtk (204 = OK)
-//   POST /api/device/auto-scan        {"line":"DATA,<n>,<18 nilai>","fw","trigger_ms","measure_ms"}
+//   POST /api/device/auto-scan        {"line":"DATA,<n>,<18 nilai>","fw","trigger_ms","measure_ms",
+//                                      "settle_ms","samples","lamp_mode"}
 //                                     atau {"error":"...","fw"} bila buah gagal diukur
 //                                     -> {"seq":57,"fruit_id":"CV-..","result":"NORMAL|ANOMALI|GAGAL"}
 //
 // Setiap buah yang memicu sensor SELALU dilaporkan (berhasil atau gagal) agar
 // nomor urut di LCD/web sama dengan urutan buah di belt.
 //
-// Kalibrasi di lokasi (lihat docs/DEPLOY_SERVER_WIFI.md): server mencatat
-// trigger_ms (lama sinyal pemicu aktif) dan measure_ms; atur LAMP_SETTLE_MS
-// di config.h agar pengukuran selesai sebelum buah keluar dari depan sensor.
+// Kalibrasi di lokasi (lihat docs/DEPLOY_SERVER_WIFI.md): SEMUA kenop ada di
+// config.h (lihat config.example.h). Server mencatat trigger_ms, measure_ms, dan
+// setelan yang dipakai tiap buah, jadi hasil antarsetelan bisa dibandingkan.
+// Serial Monitor (115200) mencetak CFG saat boot dan baris DATA tiap buah.
+//
+// AS7265x mengirim 18 kanal (format sama dengan dataset); model di server hanya
+// memakai 6 kanal NIR (610-860 nm). Gain dan integrasi bawaan SAMA dengan
+// firmware akuisisi dataset (buahsafe/buahsafe.ino); jangan diubah tanpa
+// mengambil ulang data latih.
 //
 // WiFi mitra diatur lewat hotspot "BuahSafe-Setup" (tanpa flashing ulang).
 // Tahan tombol BOOT 3 detik saat dinyalakan untuk melupakan WiFi.
 // ============================================================
 
-#define FIRMWARE_VERSION "2.1.0-conveyor"
+#define FIRMWARE_VERSION "2.2.0-conveyor"
 
 // ---- Kenop perangkat keras: nilai bawaan, bisa ditimpa di config.h ----
 #ifndef TRIGGER_PIN
@@ -62,17 +69,44 @@
 #define MAX_TRIGGER_AGE_MS 700    // picu lebih tua dari ini saat siap ukur = buah sudah lewat -> GAGAL
 #endif
 
-constexpr uint8_t BUZZER_PIN = 25;
-constexpr uint8_t BOOT_BUTTON_PIN = 0;
-constexpr uint8_t LCD_SDA_PIN = 13;
-constexpr uint8_t LCD_SCL_PIN = 14;
-constexpr uint8_t SENSOR_SDA_PIN = 21;
-constexpr uint8_t SENSOR_SCL_PIN = 22;
-constexpr uint8_t LCD_ADDRESS = 0x27;
-constexpr uint8_t SENSOR_GAIN = AS7265X_GAIN_64X;
-constexpr uint8_t SENSOR_INTEGRATION_CYCLES = 50;
+#ifndef LAMP_MODE
+#define LAMP_MODE 0               // 0 = lampu menyala hanya saat buah terpicu; 1 = menyala terus selama alat siap
+#endif
+#ifndef MEASURE_SAMPLES
+#define MEASURE_SAMPLES 1         // jumlah pengukuran yang dirata-ratakan per buah (dataset: 1)
+#endif
+#ifndef DETECT_BEEP
+#define DETECT_BEEP 1             // 1 = bip pendek saat buah terdeteksi
+#endif
+#ifndef BUZZER_PIN
+#define BUZZER_PIN 25
+#endif
+#ifndef LCD_SDA_PIN
+#define LCD_SDA_PIN 13
+#endif
+#ifndef LCD_SCL_PIN
+#define LCD_SCL_PIN 14
+#endif
+#ifndef LCD_ADDRESS
+#define LCD_ADDRESS 0x27          // sebagian modul LCD I2C memakai 0x3F
+#endif
+#ifndef SENSOR_SDA_PIN
+#define SENSOR_SDA_PIN 21
+#endif
+#ifndef SENSOR_SCL_PIN
+#define SENSOR_SCL_PIN 22
+#endif
+#ifndef SENSOR_GAIN
+#define SENSOR_GAIN AS7265X_GAIN_64X  // sama dengan dataset
+#endif
+#ifndef SENSOR_INTEGRATION_CYCLES
+#define SENSOR_INTEGRATION_CYCLES 50  // sama dengan dataset (x 2,8 ms)
+#endif
+#ifndef HEARTBEAT_MS
+#define HEARTBEAT_MS 10000        // server menganggap alat putus bila >25 dtk tanpa detak
+#endif
 
-constexpr uint32_t HEARTBEAT_MS = 10000;
+constexpr uint8_t BOOT_BUTTON_PIN = 0;
 constexpr uint32_t HTTP_TIMEOUT_MS = 8000;
 constexpr uint32_t HTTP_CONNECT_TIMEOUT_MS = 6000;
 constexpr uint16_t SETUP_PORTAL_TIMEOUT_S = 300;
@@ -113,6 +147,11 @@ uint32_t toneNextAt = 0;
 
 void setRelay(bool on) {
   digitalWrite(RELAY_PIN, (on != (RELAY_ACTIVE_LOW == 1)) ? HIGH : LOW);
+}
+
+// LAMP_MODE 1: lampu tetap menyala sehingga tidak perlu menunggu filamen memanas tiap buah
+void lampIdle() {
+  setRelay(LAMP_MODE == 1 && sensorReady);
 }
 
 void setLcdLines(const char *line1, const char *line2) {
@@ -191,38 +230,55 @@ bool initSensor() {
   return true;
 }
 
-// Lampu menyala, tunggu stabil, ukur sekali saat buah lewat. Isi `line` dengan baris DATA.
+// Lampu menyala, tunggu stabil, ukur saat buah lewat. Isi `line` dengan baris DATA.
 void measure(char *line, size_t size) {
   setRelay(true);
-  digitalWrite(BUZZER_PIN, HIGH);  // bip deteksi berbarengan dengan jeda lampu
-  delay(BEEP_DETECT[0].on);
-  digitalWrite(BUZZER_PIN, LOW);
-  if (LAMP_SETTLE_MS > BEEP_DETECT[0].on) delay(LAMP_SETTLE_MS - BEEP_DETECT[0].on);
+  const uint32_t lampOnAt = millis();
+  if (DETECT_BEEP) {
+    digitalWrite(BUZZER_PIN, HIGH);  // bip deteksi berbarengan dengan jeda lampu
+    delay(BEEP_DETECT[0].on);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+  // Mode nyala terus: lampu sudah stabil, jeda hanya untuk mode nyala-saat-picu
+  const uint32_t settle = LAMP_MODE == 1 ? 0 : LAMP_SETTLE_MS;
+  while (millis() - lampOnAt < settle) delay(1);
 
-  // Satu takeMeasurements() saja: memicu ketiga device sekaligus terbukti
-  // membuat board hang (lihat catatan panjang di ../buahsafe.ino)
-  spectralSensor.takeMeasurements();
-  setRelay(false);
+  // Urutan sama dengan dataset: 410,435,460,485,510,535,560,585,610,645,680,705,730,760,810,860,900,940 nm
+  float sum[18] = {0};
+  for (uint8_t n = 0; n < MEASURE_SAMPLES; n++) {
+    // Satu takeMeasurements() per sampel: memicu ketiga device terpisah terbukti
+    // membuat board hang (lihat catatan panjang di ../buahsafe.ino)
+    spectralSensor.takeMeasurements();
+    const float v[18] = {
+      spectralSensor.getCalibratedA(), spectralSensor.getCalibratedB(),
+      spectralSensor.getCalibratedC(), spectralSensor.getCalibratedD(),
+      spectralSensor.getCalibratedE(), spectralSensor.getCalibratedF(),
+      spectralSensor.getCalibratedG(), spectralSensor.getCalibratedH(),
+      spectralSensor.getCalibratedR(), spectralSensor.getCalibratedI(),
+      spectralSensor.getCalibratedS(), spectralSensor.getCalibratedJ(),
+      spectralSensor.getCalibratedT(), spectralSensor.getCalibratedU(),
+      spectralSensor.getCalibratedV(), spectralSensor.getCalibratedW(),
+      spectralSensor.getCalibratedK(), spectralSensor.getCalibratedL(),
+    };
+    for (uint8_t i = 0; i < 18; i++) sum[i] += v[i];
+  }
+  lampIdle();
   scanNumber++;
 
-  // Stack buffer + satu snprintf: hindari realokasi heap String
-  snprintf(
-    line, size,
-    "DATA,%lu,"
-    "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,"
-    "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,"
-    "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
-    static_cast<unsigned long>(scanNumber),
-    spectralSensor.getCalibratedA(), spectralSensor.getCalibratedB(),
-    spectralSensor.getCalibratedC(), spectralSensor.getCalibratedD(),
-    spectralSensor.getCalibratedE(), spectralSensor.getCalibratedF(),
-    spectralSensor.getCalibratedG(), spectralSensor.getCalibratedH(),
-    spectralSensor.getCalibratedR(), spectralSensor.getCalibratedI(),
-    spectralSensor.getCalibratedS(), spectralSensor.getCalibratedJ(),
-    spectralSensor.getCalibratedT(), spectralSensor.getCalibratedU(),
-    spectralSensor.getCalibratedV(), spectralSensor.getCalibratedW(),
-    spectralSensor.getCalibratedK(), spectralSensor.getCalibratedL()
-  );
+  // Stack buffer tanpa String: hindari fragmentasi heap
+  int at = snprintf(line, size, "DATA,%lu", static_cast<unsigned long>(scanNumber));
+  for (uint8_t i = 0; i < 18 && at > 0 && static_cast<size_t>(at) < size; i++) {
+    at += snprintf(line + at, size - at, ",%.6f", sum[i] / MEASURE_SAMPLES);
+  }
+}
+
+void printConfig() {
+  Serial.printf("CFG,fw=%s,trigger_pin=%d,trigger_level=%d,relay_pin=%d,relay_active_low=%d,"
+                "lamp_mode=%d,lamp_settle_ms=%d,samples=%d,gain=%d,integration=%d,"
+                "cooldown_ms=%d,max_trigger_age_ms=%d,heartbeat_ms=%d\n",
+                FIRMWARE_VERSION, TRIGGER_PIN, TRIGGER_ACTIVE_LEVEL, RELAY_PIN, RELAY_ACTIVE_LOW,
+                LAMP_MODE, LAMP_SETTLE_MS, MEASURE_SAMPLES, SENSOR_GAIN, SENSOR_INTEGRATION_CYCLES,
+                TRIGGER_COOLDOWN_MS, MAX_TRIGGER_AGE_MS, HEARTBEAT_MS);
 }
 
 // ============================================================
@@ -279,12 +335,15 @@ String jsonField(const String &body, const char *key) {
 
 // Laporkan satu buah ke server lalu tampilkan hasilnya di LCD + buzzer.
 void reportFruit(const char *line, const char *error, uint32_t triggerMs, uint32_t measureMs) {
-  static char body[512];
+  static char body[600];
   if (error) {
     snprintf(body, sizeof(body), "{\"error\":\"%s\",\"fw\":\"%s\"}", error, FIRMWARE_VERSION);
   } else {
-    snprintf(body, sizeof(body), "{\"line\":\"%s\",\"fw\":\"%s\",\"trigger_ms\":%lu,\"measure_ms\":%lu}",
-             line, FIRMWARE_VERSION, static_cast<unsigned long>(triggerMs), static_cast<unsigned long>(measureMs));
+    snprintf(body, sizeof(body),
+             "{\"line\":\"%s\",\"fw\":\"%s\",\"trigger_ms\":%lu,\"measure_ms\":%lu,"
+             "\"settle_ms\":%d,\"samples\":%d,\"lamp_mode\":%d}",
+             line, FIRMWARE_VERSION, static_cast<unsigned long>(triggerMs), static_cast<unsigned long>(measureMs),
+             LAMP_MODE == 1 ? 0 : LAMP_SETTLE_MS, MEASURE_SAMPLES, LAMP_MODE);
   }
 
   esp_task_wdt_reset();
@@ -297,6 +356,7 @@ void reportFruit(const char *line, const char *error, uint32_t triggerMs, uint32
 
   const String seq = jsonField(response, "seq");
   const String result = jsonField(response, "result");
+  Serial.printf("HASIL,%d,%s,%s,%s\n", code, seq.c_str(), result.c_str(), jsonField(response, "confidence").c_str());
   char line1[17], line2[17];
   snprintf(line2, sizeof(line2), "Yakin %s%%", jsonField(response, "confidence").c_str());
   if (code == 200 && result == "NORMAL") {
@@ -358,6 +418,7 @@ void setup() {
 
   Serial.begin(115200);
   Serial.println("BOOT,BUAHSAFE_CONVEYOR," FIRMWARE_VERSION);
+  printConfig();
 
   Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN);
   Wire.setClock(100000);
@@ -366,6 +427,7 @@ void setup() {
   lcd.backlight();
   setLcdLines("BuahSafe", "Init AS7265x...");
   sensorReady = initSensor();
+  lampIdle();
 
   startWifi();
   tls.setCACert(ROOT_CA_BUNDLE);
@@ -405,6 +467,8 @@ void loop() {
       const uint32_t measureMs = millis() - triggerAt;
       const uint32_t activeMs = triggerActiveMs ? triggerActiveMs : measureMs;  // sinyal masih aktif
       triggerPending = false;
+      Serial.printf("%s\nWAKTU,trigger_ms=%lu,measure_ms=%lu\n", line,
+                    static_cast<unsigned long>(activeMs), static_cast<unsigned long>(measureMs));
       reportFruit(line, nullptr, activeMs, measureMs);
     }
     lastHeartbeat = millis();

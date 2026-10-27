@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-10-27 09:30] [Claude Code]
+- **Goal**: Firmware ESP32 conveyor yang representatif dengan semua parameter bisa diatur untuk penyetelan di alat jadi, selaras dengan API server.
+- **Actions**: Firmware 2.2.0-conveyor: semua pin, waktu, sensor, LCD, buzzer, dan detak bisa ditimpa di `config.h`; kenop baru `LAMP_MODE` (nyala saat picu / nyala terus), `MEASURE_SAMPLES` (rata-rata per buah), `DETECT_BEEP`; baris `CFG` saat boot dan `DATA`/`WAKTU`/`HASIL` per buah di Serial; setelan (`settle_ms`, `samples`, `lamp_mode`) ikut dikirim ke `/api/device/auto-scan` dan dicatat di log server. Ditemukan selisih jeda lampu: dataset 3000 ms, conveyor 300 ms; prosedur pemeriksaan ditambahkan ke `docs/DEPLOY_SERVER_WIFI.md`. Gain dan integrasi tetap sama dengan firmware dataset.
+- **Files Modified**: `buahsafe_wifi/{buahsafe_wifi.ino,config.example.h}`, `app.py`, `tests/test_conveyor.py`, `docs/DEPLOY_SERVER_WIFI.md`, `logs/*`.
+- **Verification**: Firmware terkompilasi dengan nilai bawaan dan dengan `LAMP_MODE=1 MEASURE_SAMPLES=3 TRIGGER_ACTIVE_LEVEL=LOW`; tes baru meniru badan permintaan firmware dan pembacaan `jsonField()` (panjang teks LCD ≤ 16); seluruh tes server lulus.
+
 ### [2026-10-26 14:00] [Claude Code]
 - **Goal**: Dokumen laporan tersedia sebagai DOCX yang rapi.
 - **Actions**: Konversi Markdown ke DOCX dipisah ke `ml/md_docx.py` (dipakai `report_materials.py` dan bisa dijalankan langsung untuk berkas md lain); isi sel tabel kini diformat (tebal/miring, baris judul tebal); daftar bernomor didukung dengan nomor teks agar tidak bersambung antardaftar; butir bersarang memakai List Bullet 2.

@@ -105,6 +105,21 @@ arduino-cli upload --fqbn esp32:esp32:esp32 -p COM5 buahsafe_wifi
 
 ### Kalibrasi di lokasi
 
+Semua kenop ada di `config.h` (daftar lengkap dan nilai bawaan di `config.example.h`). Setelah mengubah kenop, flash ulang. Setelan yang aktif tercetak di Serial Monitor 115200 (baris `CFG,...`) dan ikut tercatat di log server tiap buah (`jeda lampu`, `sampel`, `mode lampu`), jadi hasil antarsetelan bisa dibandingkan:
+
+```bash
+ssh adsur@192.168.1.10 'journalctl -u buahsafe --since today | grep CONVEYOR'
+```
+
+**Langkah 0, jeda lampu (paling penting).** Data latih diambil dengan lampu dipanaskan 3000 ms sebelum mengukur. Bila conveyor mengukur saat lampu belum terang penuh, intensitas lebih rendah daripada data latih dan putusan model bergeser. Cara memeriksa:
+
+1. Letakkan satu buah diam di depan sensor, lalu buka Serial Monitor.
+2. Flash dengan `LAMP_SETTLE_MS 3000`, picu PIR dengan tangan 3 kali, lalu catat baris `DATA` (kolom 730 dan 810 nm adalah nilai ke-13 dan ke-15 setelah nomor).
+3. Ulangi dengan `LAMP_SETTLE_MS 300`.
+4. Bila nilai 300 ms masih di atas sekitar 95% nilai 3000 ms, jeda 300 ms aman. Bila lebih rendah, naikkan `LAMP_SETTLE_MS` selama waktu lintas buah masih cukup (langkah 3 di bawah), atau pakai `LAMP_MODE 1` (lampu menyala terus selama alat siap, tanpa jeda). Dengan `LAMP_MODE 1`, periksa panas lampu terhadap buah dan rangka.
+
+`MEASURE_SAMPLES` (bawaan 1) merata-ratakan beberapa pengukuran per buah. Nilai ini hanya berguna bila buah cukup lama di depan sensor, karena tiap sampel menambah sekitar 0,4 detik. `SENSOR_GAIN` dan `SENSOR_INTEGRATION_CYCLES` harus sama dengan firmware akuisisi dataset; mengubahnya berarti data latih harus diambil ulang.
+
 1. **Polaritas relay.** Bila lampu menyala terus saat alat diam, ubah `RELAY_ACTIVE_LOW` di `config.h`.
 2. **PIR pada jambu.** Lewatkan 20 buah satu per satu dan pastikan nomor di LCD bertambah 20. Bila ada yang terlewat atau satu buah memicu dua kali, ganti ke sensor halangan IR (`TRIGGER_ACTIVE_LEVEL LOW` untuk E18-D80NK) atau atur `TRIGGER_COOLDOWN_MS`.
 3. **Waktu lewat.** Server mencatat lama sinyal PIR aktif dan lama pengukuran tiap buah: `journalctl -u buahsafe | grep CONVEYOR` atau status perangkat di `/api/status` (`last_trigger_ms`, `last_measure_ms`). `LAMP_SETTLE_MS` + waktu ukur (~0,5 dtk) harus lebih kecil dari waktu buah berada di depan sensor. Bila belt terlalu cepat, perlambat belt atau beri jarak antarbuah.

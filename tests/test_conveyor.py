@@ -49,6 +49,35 @@ class TestConveyor(unittest.TestCase):
         self.assertEqual(self.dev.status()["last_trigger_ms"], 820)  # data kalibrasi tercatat
         self.assertTrue(self.scan(fw="sim-2.0").get_json()["fruit_id"].startswith(f"SIM-{TODAY}-"))
 
+    def test_firmware_payload_and_lcd_fields(self):
+        """Badan permintaan persis seperti reportFruit() firmware 2.2.0; balasan dibaca seperti jsonField()."""
+        line = "DATA,7," + ",".join(f"{30 + i:.6f}" for i in range(18))
+        body = (f'{{"line":"{line}","fw":"2.2.0-conveyor","trigger_ms":820,"measure_ms":610,'
+                f'"settle_ms":300,"samples":1,"lamp_mode":0}}')
+        res = self.client.post("/api/device/auto-scan", data=body, content_type="application/json", headers=DEV)
+        self.assertEqual(res.status_code, 200)
+        text = res.get_data(as_text=True)
+
+        def json_field(key):  # port jsonField() di buahsafe_wifi.ino
+            needle = f'"{key}":'
+            at = text.find(needle)
+            if at < 0:
+                return ""
+            at += len(needle)
+            while text[at] == " ":
+                at += 1
+            if text[at] == '"':
+                return text[at + 1:text.index('"', at + 1)]
+            end = at
+            while text[end] not in ",}":
+                end += 1
+            return text[at:end]
+
+        self.assertTrue(json_field("seq").isdigit())
+        self.assertIn(json_field("result"), ("NORMAL", "ANOMALI"))
+        self.assertLessEqual(len(f"Yakin {json_field('confidence')}%"), 16)  # muat di baris 2 LCD 16x2
+        self.assertLessEqual(len(f"#{json_field('seq')} ANOMALI"), 16)
+
     def test_auto_scan_rejects_bad_key_and_bad_line(self):
         self.assertEqual(self.scan(headers={"X-Device-Key": "salah"}).status_code, 401)
         self.assertEqual(self.scan(line="DATA,1,2,3").status_code, 400)

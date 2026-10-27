@@ -467,7 +467,9 @@ def api_device_auto_scan():
         )
     debug_logger.add("INFO", "CONVEYOR",
                      f"{fruit_id} {prediction['result']} {prediction['confidence']}% "
-                     f"(PIR aktif {payload.get('trigger_ms')} ms, ukur {payload.get('measure_ms')} ms)")
+                     f"(PIR aktif {payload.get('trigger_ms')} ms, ukur {payload.get('measure_ms')} ms, "
+                     f"jeda lampu {payload.get('settle_ms')} ms, sampel {payload.get('samples')}, "
+                     f"mode lampu {payload.get('lamp_mode')}, fw {fw})")
     return jsonify({"ok": True, "fruit_id": fruit_id, "seq": seq, "scan_no": measurement["scan_no"],
                     "result": prediction["result"], "confidence": prediction["confidence"]})
 

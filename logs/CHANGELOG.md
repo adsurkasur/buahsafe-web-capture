@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - 2026-10-27 (firmware 2.2.0)
+### Added
+- Kenop firmware `LAMP_MODE`, `MEASURE_SAMPLES`, `DETECT_BEEP`; semua pin dan waktu bisa ditimpa di `config.h`.
+- Log Serial `CFG`/`DATA`/`WAKTU`/`HASIL` untuk kalibrasi; setelan per buah tercatat di log server.
+
 ## [Unreleased] - 2026-10-26 (6 kanal NIR)
 ### Changed
 - Model produksi SVM-RBF 6 kanal NIR, ambang 0,35 (sebelumnya 18 kanal, ambang 0,45).
