@@ -68,7 +68,7 @@ Klien Vercel: set `VITE_API_URL=https://buahsafe-api.adsurkasur.my.id`, lalu tam
 
 ## Firmware ESP32 (`buahsafe_wifi/`)
 
-Board: ESP32-WROOM-32 DevKit USB-C dengan chip USB CP2102. Wiring mengikuti Tabel Koneksi di draf laporan: PIR HC-SR501 OUT GPIO 27, relay lampu GPIO 4, buzzer GPIO 25, LCD SDA 13/SCL 14, AS7265x SDA 21/SCL 22. Pin dan polaritas bisa ditimpa di `config.h` (lihat `config.example.h`).
+Board: ESP32-WROOM-32 DevKit USB-C dengan chip USB CP2102. Skema, tabel koneksi, catatan catu daya, dan urutan uji rakit: [PANDUAN_RANGKAIAN_ALAT.md](PANDUAN_RANGKAIAN_ALAT.md). Wiring mengikuti Tabel Koneksi di draf laporan: PIR HC-SR501 OUT GPIO 27, relay lampu GPIO 4, buzzer GPIO 25, LCD SDA 13/SCL 14, AS7265x SDA 21/SCL 22. Pin dan polaritas bisa ditimpa di `config.h` (lihat `config.example.h`).
 
 1. Pasang driver CP210x (Silicon Labs) bila port COM tidak muncul.
 2. Arduino IDE: tambahkan board manager `https://espressif.github.io/arduino-esp32/package_esp32_index.json`, pasang **esp32 by Espressif** (diuji 3.3.12), pilih **ESP32 Dev Module**.

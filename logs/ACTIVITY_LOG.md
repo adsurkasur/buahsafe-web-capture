@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-10-27 10:30] [Claude Code]
+- **Goal**: Panduan rangkaian (skema) alat conveyor untuk tim perakit.
+- **Actions**: `docs/PANDUAN_RANGKAIAN_ALAT.md` baru: daftar komponen, skema blok ASCII, tabel koneksi, catatan catu daya, urutan rakit dan uji bertahap, tabel gangguan. Dua koreksi atas tabel draf laporan dicatat: VCC relay 5 V (kumparan 5 V; susunan yang terbukti di firmware dataset) dan VCC LCD 5 V bila tampilan pudar, dengan level shifter atau pull-up ke 3V3. Ditautkan dari `DEPLOY_SERVER_WIFI.md`.
+- **Files Modified**: `docs/PANDUAN_RANGKAIAN_ALAT.md` (baru), `docs/DEPLOY_SERVER_WIFI.md`, `logs/ACTIVITY_LOG.md`.
+- **Verification**: Pin dicocokkan dengan Tabel Koneksi draf dan nilai bawaan firmware 2.2.0; pesan LCD/Serial di panduan sesuai string di `buahsafe_wifi.ino`. Belum diuji pada perangkat fisik.
+
 ### [2026-10-27 09:30] [Claude Code]
 - **Goal**: Firmware ESP32 conveyor yang representatif dengan semua parameter bisa diatur untuk penyetelan di alat jadi, selaras dengan API server.
 - **Actions**: Firmware 2.2.0-conveyor: semua pin, waktu, sensor, LCD, buzzer, dan detak bisa ditimpa di `config.h`; kenop baru `LAMP_MODE` (nyala saat picu / nyala terus), `MEASURE_SAMPLES` (rata-rata per buah), `DETECT_BEEP`; baris `CFG` saat boot dan `DATA`/`WAKTU`/`HASIL` per buah di Serial; setelan (`settle_ms`, `samples`, `lamp_mode`) ikut dikirim ke `/api/device/auto-scan` dan dicatat di log server. Ditemukan selisih jeda lampu: dataset 3000 ms, conveyor 300 ms; prosedur pemeriksaan ditambahkan ke `docs/DEPLOY_SERVER_WIFI.md`. Gain dan integrasi tetap sama dengan firmware dataset.
