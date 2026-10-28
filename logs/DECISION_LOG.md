@@ -1,5 +1,16 @@
 # Decision Log (Architecture Decision Records)
 
+### [DEC-012] Dukungan Payload JSON Spektral 6-Kanal Langsung dari Purwarupa Fisik ESP32 AS7263
+- **Date**: 2026-10-28
+- **Status**: Accepted
+- **Context**: Purwarupa fisik alat konveyor BuahSafe (`asic_final_alat`) menggunakan ESP32 dengan sensor AS7263 yang menghasilkan 6 kanal transmisi NIR terkalibrasi (`nm610`, `nm680`, `nm730`, `nm760`, `nm810`, `nm860`). Sebelumnya, `/api/device/auto-scan` mensyaratkan format baris teks serial legacy (`DATA,<scan_no>,<18_nilai>`) dan `/api/predict` tidak tercatat ke antrean/database SQLite.
+- **Decision**:
+  1. Memodifikasi `/api/device/auto-scan` agar menerima format ganda: string baris serial legacy (`line`) maupun objek JSON langsung (`nm610`..`nm860` atau `spectral`), dengan kanal yang tidak disertakan diisi 0.0 secara aman untuk penyimpanan SQLite `measurements`.
+  2. Menambahkan field `label` dan `prob` ke dalam balasan JSON `/api/device/auto-scan` agar kompatibel langsung dengan parser LCD firmware `buahsafe_conveyor.ino`, di samping field `seq`, `fruit_id`, `result`, dan `confidence` untuk antrean dasbor web.
+  3. Memasukkan `/api/predict` ke dalam `PUBLIC_PATHS` dan menambahkan field `label` serta `prob` agar pengujian mandiri ML dapat berjalan lancar.
+- **Alternatives**: Memaksa firmware merangkai string `DATA,...` dengan 18 float (ditolak: memboroskan komputasi mikroprosesor dan transmisi jaringan); membuat endpoint terpisah khusus hardware fisik (ditolak: menduplikasi logika antrean harian dan locking konveyor).
+- **Affected**: `buahsafe-web-capture/app.py`, `tests/test_conveyor.py`, `asic_final_alat/buahsafe_conveyor.ino`.
+
 ### [DEC-011] Pelacakan Batch Petani Mitra Aktif dan Skema Harga Multi-Grade Berbasis `app_settings`
 - **Date**: 2026-10-28
 - **Status**: Accepted

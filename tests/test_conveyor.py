@@ -127,6 +127,32 @@ class TestConveyor(unittest.TestCase):
         self.assertEqual(res.get_json(), {"simulate": 5})
         self.assertEqual(self.client.get("/api/device/poll?fw=sim-2.0", headers=DEV).status_code, 204)
 
+    def test_auto_scan_direct_json_channels_and_predict(self):
+        # Payload 6 kanal langsung dari ESP32 AS7263 / asic_final_alat
+        payload = {
+            "nm610": 28.5, "nm680": 29.1, "nm730": 75.2,
+            "nm760": 78.4, "nm810": 88.6, "nm860": 76.2,
+            "fw": "asic-2.2.0-conveyor"
+        }
+        res = self.client.post("/api/device/auto-scan", json=payload, headers=DEV)
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["fruit_id"].startswith(f"CV-{TODAY}-"))
+        self.assertIn(data["result"], ("NORMAL", "ANOMALI"))
+        self.assertEqual(data["label"], data["result"])
+        self.assertIsInstance(data["prob"], float)
+        self.assertIn("seq", data)
+        self.assertIn("confidence", data)
+
+        # Uji juga endpoint publik /api/predict
+        pred_res = self.client.post("/api/predict", json=payload)
+        self.assertEqual(pred_res.status_code, 200)
+        pred_data = pred_res.get_json()
+        self.assertIn("label", pred_data)
+        self.assertIn("prob", pred_data)
+        self.assertEqual(pred_data["label"], pred_data["result"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-10-28 18:48] [Antigravity / IoT Integration Engineer]
+- **Goal**: Integrasi dan pengujian purwarupa IoT ESP32 AS7263 (`asic_final_alat`) ke backend server BuahSafe (`buahsafe-web-capture`).
+- **Actions**: Memperbarui `/api/device/auto-scan` di `app.py` agar menerima dictionary JSON kanal langsung (`nm610`..`nm860`), mengembalikan field kompatibilitas `label` dan `prob`, serta memasukkan `/api/predict` ke `PUBLIC_PATHS`; menyempurnakan firmware `asic_final_alat/buahsafe_conveyor.ino` dengan dukungan HTTPS Cloudflare (`WiFiClientSecure`), header `X-Device-Key`, dan tampilan nomor urut harian LCD `#<seq> <label>`; menambahkan pengujian `test_auto_scan_direct_json_channels_and_predict` pada `tests/test_conveyor.py`; mencatat `[DEC-012]`.
+- **Files Modified**: `app.py`, `tests/test_conveyor.py`, `asic_final_alat/buahsafe_conveyor.ino`, `logs/DECISION_LOG.md`, `logs/CHANGELOG.md`, `logs/ACTIVITY_LOG.md`.
+- **Verification**: Seluruh 80 backend unit test, 9 test auth produksi, dan 6 sandbox E2E test lulus 100% (`Ran 80 tests in 11.189s OK`, `Ran 9 tests OK`, `Ran 6 tests OK`).
+
 ### [2026-10-28 10:33] [Antigravity / Task-6 Verifier]
 - **Goal**: Verifikasi End-to-End Sandbox (`run_local_sandbox.py --test`) dan pencatatan ADR (`DEC-011`) untuk pelacakan batch petani mitra aktif serta konfigurasi skema harga multi-grade kustom.
 - **Actions**: Menjalankan suite pengujian otomatis penuh (`unittest discover` 79 tes, `test_auth_production.py` 9 tes, `test_sandbox_e2e.py` 6 tes, serta kompilasi klien produksi); mencatat keputusan arsitektur `[DEC-011]` di `logs/DECISION_LOG.md` dan memperbarui `logs/CHANGELOG.md`.

@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - 2026-10-28 (integrasi IoT konveyor AS7263)
+### Added
+- Dukungan payload JSON 6-kanal transmisi NIR (`nm610`..`nm860`) langsung pada endpoint `/api/device/auto-scan` untuk purwarupa fisik ESP32 (`asic_final_alat`).
+- Field `label` dan `prob` pada balasan JSON `/api/device/auto-scan` dan `/api/predict` untuk kompatibilitas tampilan LCD purwarupa alat.
+- Pengujian otomatis `test_auto_scan_direct_json_channels_and_predict` di `tests/test_conveyor.py`.
+
 ## [Unreleased] - 2026-10-28 (batch petani & harga multi-grade)
 ### Added
 - Kolom `petani_id` dan `batch_id` pada tabel `measurements` yang terisi otomatis dari batch aktif saat pemindaian disimpan (`insert_measurement`).

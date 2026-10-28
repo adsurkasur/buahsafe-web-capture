@@ -106,7 +106,7 @@ def require_auth(allowed_roles: list[str] | tuple[str, ...] | None = None):
 # Di produksi server terbuka ke internet (Cloudflare Tunnel): endpoint warisan dasbor
 # akuisisi lokal yang tadinya tanpa token ikut diwajibkan login di sini.
 PUBLIC_PATHS = {"/api/auth/login", "/api/auth/logout", "/api/device/poll", "/api/device/result",
-                "/api/device/auto-scan"}  # endpoint perangkat dijaga X-Device-Key
+                "/api/device/auto-scan", "/api/predict"}  # endpoint perangkat dijaga X-Device-Key
 
 
 @app.before_request
@@ -286,6 +286,9 @@ def api_predict():
     spectral = payload.get("spectral", payload)
     try:
         res = predictor.predict(spectral)
+        prob_anomali = round(res["probabilities"]["anomali"] / 100.0, 4) if "probabilities" in res else 0.0
+        res["label"] = res["result"]
+        res["prob"] = prob_anomali
         return jsonify(res)
     except Exception as err:
         return jsonify({"error": str(err)}), 400
@@ -439,10 +442,19 @@ def api_device_auto_scan():
     device.record_trigger(payload.get("trigger_ms"), payload.get("measure_ms"))
     sensor_error = str(payload.get("error") or "")[:80]
     if not sensor_error:
-        try:
-            reading = parse_data_line(str(payload.get("line", "")))
-        except DeviceError as err:
-            return jsonify({"ok": False, "error": f"Data sensor tidak valid: {err}"}), 400
+        if "line" in payload:
+            try:
+                reading = parse_data_line(str(payload.get("line", "")))
+            except DeviceError as err:
+                return jsonify({"ok": False, "error": f"Data sensor tidak valid: {err}"}), 400
+        else:
+            spec_dict = payload.get("spectral") if isinstance(payload.get("spectral"), dict) else payload
+            reading = {"scan_no": int(payload.get("scan_no") or 0)}
+            for k in CHANNEL_KEYS:
+                try:
+                    reading[k] = float(spec_dict.get(k, 0.0))
+                except (ValueError, TypeError):
+                    reading[k] = 0.0
 
     prefix = "SIM" if fw.startswith("sim") else "CV"
     with _auto_scan_lock:
@@ -474,8 +486,10 @@ def api_device_auto_scan():
                      f"(PIR aktif {payload.get('trigger_ms')} ms, ukur {payload.get('measure_ms')} ms, "
                      f"jeda lampu {payload.get('settle_ms')} ms, sampel {payload.get('samples')}, "
                      f"mode lampu {payload.get('lamp_mode')}, fw {fw})")
+    prob_anomali = round(prediction["probabilities"]["anomali"] / 100.0, 4) if "probabilities" in prediction else round(prediction.get("confidence", 0) / 100.0, 4)
     return jsonify({"ok": True, "fruit_id": fruit_id, "seq": seq, "scan_no": measurement["scan_no"],
-                    "result": prediction["result"], "confidence": prediction["confidence"]})
+                    "result": prediction["result"], "confidence": prediction["confidence"],
+                    "label": prediction["result"], "prob": prob_anomali})
 
 
 @app.post("/api/device/enabled")
