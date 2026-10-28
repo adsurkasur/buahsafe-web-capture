@@ -1,5 +1,16 @@
 # Decision Log (Architecture Decision Records)
 
+### [DEC-011] Pelacakan Batch Petani Mitra Aktif dan Skema Harga Multi-Grade Berbasis `app_settings`
+- **Date**: 2026-10-28
+- **Status**: Accepted
+- **Context**: Di lapangan, sensor PIR pada conveyor memicu pemindaian secara otomatis tanpa input formulir per buah, sehingga pindaian sebelumnya tidak memiliki keterkaitan dengan petani mitra pemasok. Selain itu, pemilik gudang membutuhkan estimasi nilai finansial risiko kerugian yang berhasil dicegah berdasarkan skema harga multi-grade jambu kristal yang dapat berubah mengikuti harga pasar (per kg maupun per butir).
+- **Decision**:
+  1. Menambahkan kolom `petani_id` dan `batch_id` secara idempotent pada tabel `measurements`.
+  2. Menyimpan state sesi `active_batch` (`petani_id`, `batch_id`, `started_at`, `updated_by`) di `app_settings` dan mengaitkannya secara otomatis ke setiap pindaian baru di `insert_measurement()` (baik `/api/device/auto-scan` maupun `/api/scan`). Operator diizinkan mengganti batch aktif melalui `POST /api/batch/active`.
+  3. Menyimpan konfigurasi harga `grade_pricing` (satuan `kg`/`butir`, bobot rata-rata gram per butir, daftar grade komersial non-afkir dinamis, dan harga sisa afkir) di `app_settings` melalui `GET/PUT /api/settings/pricing` (eksklusif diubah oleh `owner`).
+- **Alternatives**: Meminta operator memilih petani untuk setiap buah satu per satu (ditolak: tidak realistis pada conveyor berjalan); membuat tabel relasional khusus `batches` dan `grades` (ditolak: menambah kompleksitas skema untuk konfigurasi aktif yang bersifat singleton).
+- **Affected**: `database.py`, `app.py`, `tests/test_server_api.py`.
+
 ### [DEC-010] Model Produksi Hanya Memakai 6 Kanal NIR
 - **Date**: 2026-10-26
 - **Status**: Accepted (menggantikan pemilihan SVM 18 kanal pada seleksi 2026-10-25)

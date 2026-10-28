@@ -5,9 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] - 2026-10-28 (batch petani & harga multi-grade)
 ### Added
-- Kolom `petani_id` dan `batch_id` pada tabel `measurements` yang terisi otomatis dari batch aktif saat pemindaian disimpan.
-- Endpoint `GET/POST /api/batch/active` untuk melihat dan mengatur petani mitra serta kode batch aktif di meja conveyor.
-- Endpoint `GET/PUT /api/settings/pricing` untuk membaca dan menyesuaikan skema harga multi-grade jambu kristal serta harga sisa afkir.
+- Kolom `petani_id` dan `batch_id` pada tabel `measurements` yang terisi otomatis dari batch aktif saat pemindaian disimpan (`insert_measurement`).
+- Endpoint `GET/POST /api/batch/active` untuk melihat dan mengatur petani mitra serta kode batch aktif di meja conveyor (dapat diakses oleh `operator`, `supervisor`, dan `owner`).
+- Endpoint `GET/PUT /api/settings/pricing` untuk membaca dan menyesuaikan skema harga multi-grade jambu kristal (`kg`/`butir`, bobot rata-rata, daftar grade komersial dinamis, serta harga sisa afkir).
+- Pengujian unit/API otomatis `test_active_batch_and_grade_pricing_endpoints` di `tests/test_server_api.py`.
 
 ## [Unreleased] - 2026-10-27 (firmware 2.2.0)
 ### Added

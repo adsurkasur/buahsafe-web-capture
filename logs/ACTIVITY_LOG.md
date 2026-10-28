@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-10-28 10:33] [Antigravity / Task-6 Verifier]
+- **Goal**: Verifikasi End-to-End Sandbox (`run_local_sandbox.py --test`) dan pencatatan ADR (`DEC-011`) untuk pelacakan batch petani mitra aktif serta konfigurasi skema harga multi-grade kustom.
+- **Actions**: Menjalankan suite pengujian otomatis penuh (`unittest discover` 79 tes, `test_auth_production.py` 9 tes, `test_sandbox_e2e.py` 6 tes, serta kompilasi klien produksi); mencatat keputusan arsitektur `[DEC-011]` di `logs/DECISION_LOG.md` dan memperbarui `logs/CHANGELOG.md`.
+- **Files Modified**: `logs/ACTIVITY_LOG.md`, `logs/DECISION_LOG.md`, `logs/CHANGELOG.md`.
+- **Verification**: `run_local_sandbox.py --test` lulus 100% (79 unit + 9 auth + 6 E2E + frontend build sukses).
+
 ### [2026-10-28 10:01] [Antigravity / Task-1 Implementer]
 - **Goal**: Implementasi skema database dan endpoint API untuk pelacakan batch petani mitra aktif (`petani_id`, `batch_id`) dan skema harga multi-grade kustom (`grade_pricing`).
 - **Actions**: Menambahkan kolom idempotent `petani_id` dan `batch_id` ke tabel `measurements` serta mengaitkannya otomatis pada `insert_measurement()`; menambahkan helper `get_active_batch()`, `set_active_batch()`, `get_grade_pricing()`, dan `set_grade_pricing()` berbasis `app_settings`; mengekspos endpoint `GET/POST /api/batch/active` dan `GET/PUT /api/settings/pricing` di `app.py` beserta izin peran `operator` untuk memperbarui batch aktif; menambahkan pengujian `test_active_batch_and_grade_pricing_endpoints` di `tests/test_server_api.py`.
