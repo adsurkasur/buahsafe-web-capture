@@ -122,7 +122,11 @@ def enforce_production_auth():
     if not session:
         return jsonify({"error": "Sesi tidak ditemukan. Silakan masuk terlebih dahulu."}), 401
     g.current_user = session
-    if request.method != "GET" and session.get("role") == "operator" and request.path != "/api/scan":
+    if (
+        request.method != "GET"
+        and session.get("role") == "operator"
+        and request.path not in ("/api/scan", "/api/batch/active")
+    ):
         return jsonify({"error": "Akses ditolak untuk peran operator."}), 403
     return None
 
@@ -550,6 +554,50 @@ def api_delete_petani(petani_id: str):
     if not deleted:
         return jsonify({"error": "Petani tidak ditemukan"}), 404
     return jsonify({"deleted_id": petani_id})
+
+
+@app.get("/api/batch/active")
+def api_get_active_batch():
+    """Memperoleh batch sortasi dan petani mitra yang sedang aktif di meja conveyor."""
+    return jsonify({"batch": database.get_active_batch(), "petani": database.list_petani()})
+
+
+@app.post("/api/batch/active")
+@require_auth(["operator", "supervisor", "owner"])
+def api_set_active_batch():
+    """Mengatur petani mitra / kode batch aktif untuk sesi sortasi berjalan."""
+    payload = request.get_json(silent=True) or {}
+    petani_id = str(payload.get("petani_id", "")).strip()
+    batch_code = str(payload.get("batch_code", "")).strip()
+    batch = database.set_active_batch(petani_id, batch_code)
+    debug_logger.add(
+        "INFO",
+        "BATCH",
+        f"Batch aktif diatur ke '{batch['batch_id']}' (Petani: {batch['petani_name'] or 'Umum'})",
+    )
+    return jsonify({"ok": True, "batch": batch})
+
+
+@app.get("/api/settings/pricing")
+def api_get_pricing_settings():
+    """Memperoleh skema harga grade jambu kristal dan nilai sisa afkir."""
+    return jsonify({"pricing": database.get_grade_pricing()})
+
+
+@app.put("/api/settings/pricing")
+@require_auth(["owner"])
+def api_update_pricing_settings():
+    """Menyimpan konfigurasi grade harga jambu kristal (khusus Owner)."""
+    payload = request.get_json(silent=True) or {}
+    saved, err = database.set_grade_pricing(payload)
+    if err or not saved:
+        return jsonify({"error": err or "Gagal menyimpan skema harga"}), 400
+    debug_logger.add(
+        "INFO",
+        "PRICING",
+        f"Skema harga diperbarui ({len(saved['grades'])} grade, satuan Rp/{saved['unit']})",
+    )
+    return jsonify({"ok": True, "pricing": saved})
 
 
 @app.get("/api/measurements")

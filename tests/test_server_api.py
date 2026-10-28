@@ -1,13 +1,26 @@
 """Unit tests for BuahSafe multi-role API, ML inference, and analytics endpoints."""
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from app import app
 import database
 import predictor
 
 
+_ORIGINAL_DB_PATH = database.DATABASE_PATH
+
+
+def make_test_client(db_path: Path):
+    database.DATABASE_PATH = db_path
+    database.initialize()
+    app.config["TESTING"] = True
+    return app.test_client()
+
+
 class TestServerAPI(unittest.TestCase):
     def setUp(self):
+        database.DATABASE_PATH = _ORIGINAL_DB_PATH
         app.config["TESTING"] = True
         self.client = app.test_client()
         database.initialize()
@@ -118,6 +131,76 @@ class TestServerAPI(unittest.TestCase):
         # Hapus
         del_res = self.client.delete(f"/api/master-data/petani/{petani_id}", headers=headers)
         self.assertEqual(del_res.status_code, 200)
+
+    def test_active_batch_and_grade_pricing_endpoints(self):
+        try:
+            test_active_batch_and_grade_pricing_endpoints()
+        finally:
+            database.DATABASE_PATH = _ORIGINAL_DB_PATH
+
+
+def test_active_batch_and_grade_pricing_endpoints():
+    """Uji pengaturan batch petani aktif dan skema harga multi-grade kustom."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = make_test_client(Path(tmpdir) / "test_batch_pricing.db")
+
+        # 1. Default active batch kosong / umum
+        res = client.get("/api/batch/active")
+        assert res.status_code == 200
+        data = res.get_json()
+        assert "batch" in data
+        assert data["batch"]["petani_id"] == ""
+
+        # 2. Set active batch ke petani mitra p1 (Pak Karto)
+        token_res = client.post(
+            "/api/auth/login",
+            json={"username": "operator", "password": "operator123"},
+        )
+        op_token = token_res.get_json()["token"]
+        res = client.post(
+            "/api/batch/active",
+            json={"petani_id": "p1", "batch_code": "BATCH-PAGI-01"},
+            headers={"Authorization": f"Bearer {op_token}"},
+        )
+        assert res.status_code == 200
+        batch = res.get_json()["batch"]
+        assert batch["petani_id"] == "p1"
+        assert batch["petani_name"] == "Pak Karto"
+        assert batch["batch_id"] == "BATCH-PAGI-01"
+
+        # 3. Default grade pricing tersedia dengan unit 'kg' dan minimal 1 grade
+        res = client.get("/api/settings/pricing")
+        assert res.status_code == 200
+        pricing = res.get_json()["pricing"]
+        assert pricing["unit"] in ("kg", "butir")
+        assert len(pricing["grades"]) >= 1
+
+        # 4. Simpan kustomisasi grade pricing (3 grade non-afkir + harga afkir)
+        owner_login = client.post(
+            "/api/auth/login",
+            json={"username": "owner", "password": "owner123"},
+        )
+        owner_token = owner_login.get_json()["token"]
+        custom_pricing = {
+            "unit": "kg",
+            "avg_weight_g": 280,
+            "grades": [
+                {"id": "g-super", "name": "Grade Super", "price": 22000},
+                {"id": "g-a", "name": "Grade A", "price": 18000},
+                {"id": "g-b", "name": "Grade B", "price": 13000},
+            ],
+            "afkir_price": 3000,
+        }
+        res = client.put(
+            "/api/settings/pricing",
+            json=custom_pricing,
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        assert res.status_code == 200
+        saved = res.get_json()["pricing"]
+        assert saved["avg_weight_g"] == 280
+        assert len(saved["grades"]) == 3
+        assert saved["afkir_price"] == 3000
 
 
 if __name__ == "__main__":

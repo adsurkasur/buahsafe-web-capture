@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import secrets
 import sqlite3
@@ -30,6 +31,8 @@ SCHEMA_COLUMNS = (
     "confidence REAL",
     "device_id TEXT NOT NULL DEFAULT 'BSF-001'",
     "operator_id TEXT NOT NULL DEFAULT ''",
+    "petani_id TEXT NOT NULL DEFAULT ''",
+    "batch_id TEXT NOT NULL DEFAULT ''",
 )
 
 INSERT_FIELDS = ("timestamp", "fruit_id", "scan_no", *CHANNEL_KEYS)
@@ -115,6 +118,14 @@ def initialize() -> None:
             if "operator_id" not in columns:
                 connection.execute(
                     "ALTER TABLE measurements ADD COLUMN operator_id TEXT NOT NULL DEFAULT ''"
+                )
+            if "petani_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE measurements ADD COLUMN petani_id TEXT NOT NULL DEFAULT ''"
+                )
+            if "batch_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE measurements ADD COLUMN batch_id TEXT NOT NULL DEFAULT ''"
                 )
 
             if had_legacy_rotasi:
@@ -357,8 +368,16 @@ def insert_measurement(
     confidence: float | None = None,
     device_id: str = "BSF-001",
     operator_id: str = "",
+    petani_id: str | None = None,
+    batch_id: str | None = None,
 ) -> dict[str, Any]:
     timestamp = datetime.now().isoformat(timespec="milliseconds")
+    if petani_id is None or batch_id is None:
+        active_batch = get_active_batch()
+        if petani_id is None:
+            petani_id = active_batch.get("petani_id", "")
+        if batch_id is None:
+            batch_id = active_batch.get("batch_id", "")
     values = [
         timestamp,
         fruit_id,
@@ -368,9 +387,19 @@ def insert_measurement(
         float(confidence) if confidence is not None else None,
         str(device_id or "BSF-001"),
         str(operator_id or ""),
+        str(petani_id or ""),
+        str(batch_id or ""),
     ]
 
-    extended_fields = (*INSERT_FIELDS, "prediction", "confidence", "device_id", "operator_id")
+    extended_fields = (
+        *INSERT_FIELDS,
+        "prediction",
+        "confidence",
+        "device_id",
+        "operator_id",
+        "petani_id",
+        "batch_id",
+    )
     placeholders = ", ".join("?" for _ in values)
     fields_sql = ", ".join(extended_fields)
 
@@ -814,6 +843,163 @@ def set_setting(key: str, value: str) -> None:
             "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
         )
+
+
+DEFAULT_GRADE_PRICING: dict[str, Any] = {
+    "unit": "kg",
+    "avg_weight_g": 300,
+    "grades": [
+        {"id": "grade-super", "name": "Grade Super", "price": 22000},
+        {"id": "grade-a", "name": "Grade A", "price": 18000},
+        {"id": "grade-b", "name": "Grade B", "price": 12000},
+    ],
+    "afkir_price": 3000,
+}
+
+
+def get_active_batch() -> dict[str, Any]:
+    raw = get_setting("active_batch", "")
+    default_batch = {
+        "batch_id": f"BATCH-{datetime.now():%Y%m%d}",
+        "petani_id": "",
+        "petani_name": "",
+        "village": "",
+        "updated_at": "",
+    }
+    if not raw:
+        return default_batch
+    try:
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            return default_batch
+        return {
+            "batch_id": str(parsed.get("batch_id") or default_batch["batch_id"]),
+            "petani_id": str(parsed.get("petani_id") or ""),
+            "petani_name": str(parsed.get("petani_name") or ""),
+            "village": str(parsed.get("village") or ""),
+            "updated_at": str(parsed.get("updated_at") or ""),
+        }
+    except Exception:
+        return default_batch
+
+
+def set_active_batch(petani_id: str, batch_code: str = "") -> dict[str, Any]:
+    clean_petani_id = str(petani_id or "").strip()
+    petani_name = ""
+    village = ""
+    if clean_petani_id:
+        with database_connection() as connection:
+            row = connection.execute(
+                "SELECT id, name, village FROM petani_mitra WHERE id = ?",
+                (clean_petani_id,),
+            ).fetchone()
+        if row:
+            petani_name = row["name"]
+            village = row["village"]
+        else:
+            clean_petani_id = ""
+
+    clean_batch = str(batch_code or "").strip().upper()
+    if not clean_batch:
+        suffix = f"-{clean_petani_id.upper()}" if clean_petani_id else ""
+        clean_batch = f"BATCH-{datetime.now():%Y%m%d}{suffix}"
+
+    payload = {
+        "batch_id": clean_batch[:40],
+        "petani_id": clean_petani_id,
+        "petani_name": petani_name,
+        "village": village,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    set_setting("active_batch", json.dumps(payload, ensure_ascii=False))
+    return payload
+
+
+def get_grade_pricing() -> dict[str, Any]:
+    raw = get_setting("grade_pricing", "")
+    if not raw:
+        return dict(DEFAULT_GRADE_PRICING)
+    try:
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            return dict(DEFAULT_GRADE_PRICING)
+        unit = parsed.get("unit") if parsed.get("unit") in ("kg", "butir") else "kg"
+        avg_weight_g = max(50, min(int(parsed.get("avg_weight_g") or 300), 2000))
+        afkir_price = max(0, int(parsed.get("afkir_price") or 0))
+        raw_grades = parsed.get("grades")
+        grades = []
+        if isinstance(raw_grades, list):
+            for idx, item in enumerate(raw_grades[:12]):
+                if isinstance(item, dict) and str(item.get("name", "")).strip():
+                    grades.append({
+                        "id": str(item.get("id") or f"grade-{idx + 1}"),
+                        "name": str(item.get("name")).strip()[:40],
+                        "price": max(0, int(item.get("price") or 0)),
+                    })
+        if not grades:
+            grades = list(DEFAULT_GRADE_PRICING["grades"])
+        return {
+            "unit": unit,
+            "avg_weight_g": avg_weight_g,
+            "grades": grades,
+            "afkir_price": afkir_price,
+        }
+    except Exception:
+        return dict(DEFAULT_GRADE_PRICING)
+
+
+def set_grade_pricing(config: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+    unit = str(config.get("unit", "kg")).strip().lower()
+    if unit not in ("kg", "butir"):
+        return None, "Satuan harga harus 'kg' atau 'butir'"
+    try:
+        avg_weight_g = int(config.get("avg_weight_g", 300))
+    except (TypeError, ValueError):
+        return None, "Bobot rata-rata buah harus berupa angka (gram)"
+    if avg_weight_g < 50 or avg_weight_g > 2000:
+        return None, "Bobot rata-rata buah harus antara 50 sampai 2000 gram"
+
+    try:
+        afkir_price = int(config.get("afkir_price", 0))
+    except (TypeError, ValueError):
+        return None, "Harga afkir harus berupa angka Rupiah"
+    if afkir_price < 0:
+        return None, "Harga afkir tidak boleh negatif"
+
+    raw_grades = config.get("grades")
+    if not isinstance(raw_grades, list) or len(raw_grades) == 0:
+        return None, "Minimal harus ada 1 grade komersial (non-afkir)"
+
+    grades: list[dict[str, Any]] = []
+    for idx, g in enumerate(raw_grades[:12]):
+        if not isinstance(g, dict):
+            continue
+        name = str(g.get("name", "")).strip()
+        if not name:
+            return None, f"Nama grade baris ke-{idx + 1} tidak boleh kosong"
+        try:
+            price = int(g.get("price", 0))
+        except (TypeError, ValueError):
+            return None, f"Harga untuk {name} harus berupa angka Rupiah"
+        if price < 0:
+            return None, f"Harga untuk {name} tidak boleh negatif"
+        grades.append({
+            "id": str(g.get("id") or f"grade-{idx + 1}")[:32],
+            "name": name[:40],
+            "price": price,
+        })
+
+    if not grades:
+        return None, "Minimal harus ada 1 grade komersial (non-afkir)"
+
+    clean_config = {
+        "unit": unit,
+        "avg_weight_g": avg_weight_g,
+        "grades": grades,
+        "afkir_price": afkir_price,
+    }
+    set_setting("grade_pricing", json.dumps(clean_config, ensure_ascii=False))
+    return clean_config, None
 
 
 def set_device_name(device_id: str, name: str) -> bool:

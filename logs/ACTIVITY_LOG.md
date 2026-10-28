@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-10-28 10:01] [Antigravity / Task-1 Implementer]
+- **Goal**: Implementasi skema database dan endpoint API untuk pelacakan batch petani mitra aktif (`petani_id`, `batch_id`) dan skema harga multi-grade kustom (`grade_pricing`).
+- **Actions**: Menambahkan kolom idempotent `petani_id` dan `batch_id` ke tabel `measurements` serta mengaitkannya otomatis pada `insert_measurement()`; menambahkan helper `get_active_batch()`, `set_active_batch()`, `get_grade_pricing()`, dan `set_grade_pricing()` berbasis `app_settings`; mengekspos endpoint `GET/POST /api/batch/active` dan `GET/PUT /api/settings/pricing` di `app.py` beserta izin peran `operator` untuk memperbarui batch aktif; menambahkan pengujian `test_active_batch_and_grade_pricing_endpoints` di `tests/test_server_api.py`.
+- **Files Modified**: `database.py`, `app.py`, `tests/test_server_api.py`, `logs/ACTIVITY_LOG.md`, `logs/CHANGELOG.md`.
+- **Verification**: Seluruh suite uji (`unittest discover -s tests -p "test_*.py" -v`, 79 tes termasuk `test_active_batch_and_grade_pricing_endpoints`) lulus (OK).
+
 ### [2026-10-27 10:30] [Claude Code]
 - **Goal**: Panduan rangkaian (skema) alat conveyor untuk tim perakit.
 - **Actions**: `docs/PANDUAN_RANGKAIAN_ALAT.md` baru: daftar komponen, skema blok ASCII, tabel koneksi, catatan catu daya, urutan rakit dan uji bertahap, tabel gangguan. Dua koreksi atas tabel draf laporan dicatat: VCC relay 5 V (kumparan 5 V; susunan yang terbukti di firmware dataset) dan VCC LCD 5 V bila tampilan pudar, dengan level shifter atau pull-up ke 3V3. Ditautkan dari `DEPLOY_SERVER_WIFI.md`.
