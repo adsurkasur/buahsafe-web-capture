@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-10-29 22:58] [Antigravity / Systems Diagnostician & Reliability Engineer]
+- **Goal**: Diagnosis dan perbaikan akar masalah server error pada backend BuahSafe (`buahsafe-web-capture`) dan verifikasi integrasi live server HP t530 / Vercel client.
+- **Actions**: Memeriksa status systemd `buahsafe.service` dan `cloudflared.service` di server HP t530 thin client (`192.168.1.10`); mengidentifikasi bahwa status "Alat diputus pemilik" terjadi karena toggle pemutusan alat oleh akun owner di app_settings; mengidentifikasi bahwa penanganan eksepsi umum `@app.errorhandler(Exception)` menangkap `werkzeug.exceptions.HTTPException` (misal 405 Method Not Allowed) dan mengubahnya menjadi 500 Internal Server Error di mode produksi; menambahkan `@app.errorhandler(HTTPException)` eksplisit di `app.py`; menguji reaktivasi alat ("Sambungkan alat") dari dashboard; memverifikasi seluruh 80 unit test.
+- **Files Modified**: `app.py`, `logs/ACTIVITY_LOG.md`.
+- **Verification**: 80 unit test backend lulus 100% (`Ran 80 tests in 21.104s OK`); verifikasi live Playwright di `https://buahsafe.vercel.app` dan curl API Cloudflare tunnel berjalan lancar tanpa 500 error.
+
 ### [2026-10-28 18:48] [Antigravity / IoT Integration Engineer]
 - **Goal**: Integrasi dan pengujian purwarupa IoT ESP32 AS7263 (`asic_final_alat`) ke backend server BuahSafe (`buahsafe-web-capture`).
 - **Actions**: Memperbarui `/api/device/auto-scan` di `app.py` agar menerima dictionary JSON kanal langsung (`nm610`..`nm860`), mengembalikan field kompatibilitas `label` dan `prob`, serta memasukkan `/api/predict` ke `PUBLIC_PATHS`; menyempurnakan firmware `asic_final_alat/buahsafe_conveyor.ino` dengan dukungan HTTPS Cloudflare (`WiFiClientSecure`), header `X-Device-Key`, dan tampilan nomor urut harian LCD `#<seq> <label>`; menambahkan pengujian `test_auto_scan_direct_json_channels_and_predict` pada `tests/test_conveyor.py`; mencatat `[DEC-012]`.

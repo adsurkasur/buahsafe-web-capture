@@ -16,6 +16,7 @@ from functools import wraps
 from typing import Any
 
 from flask import Flask, Response, g, jsonify, render_template, request
+from werkzeug.exceptions import HTTPException
 
 import database
 import predictor
@@ -831,6 +832,11 @@ def handle_device_error(error: DeviceError):
         "device": device.status(),
         "last_raw_line": debug_logger.last_raw_line,
     }), 503
+
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(error: HTTPException):
+    return jsonify({"error": error.description}), error.code
 
 
 @app.errorhandler(Exception)
