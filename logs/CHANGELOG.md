@@ -1,5 +1,17 @@
 # Changelog
 
+## [2026-10-30] — Output archived locally
+
+### Added
+- Pengarsipan reversibel dengan hash, manifest dan pemeriksa ulang untuk9kelompok output.
+
+### Changed
+- Output aktif berisi workbook646, CSV518, README dan arsip. Venv arsip tetap lokal dan diabaikan Git.
+- Rujukan serta tujuan default bahan laporan versi aplikasi mengikuti direktori `laporan-akhir/sumber/`.
+
+### Fixed
+- Bahan lama tidak lagi tercampur dengan sumber dataset aktif. Tidak ada perubahan model atau perilaku inferensi.
+
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 

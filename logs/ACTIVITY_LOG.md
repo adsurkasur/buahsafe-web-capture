@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-10-30 11:30] Codex — pengarsipan output penelitian
+- **Tujuan:** Merapikan output sesuai arahan pengguna tanpa menghapus sumber aktif.
+- **Tindakan:** Memindahkan9akar/6.374berkas ke `output/arsip/2026-10-30-cleanup`, menyimpan manifest/hash, memperbarui indeks dan tujuan default bahan laporan lama ke `laporan-akhir/sumber/bahan-laporan-ml`.
+- **Berkas:** `scripts/archive_output.py`, `output/README.md`, manifest dan32berkas arsip yang dapat diversi, `.gitignore`, `ml/report_materials.py`, `docs/DEPLOY_SERVER_WIFI.md`, ketiga log.
+- **Verifikasi:** Pemeriksaan ulang hash seluruh9akar PASS. Workbook646 dan CSV518 utuh pada lokasi aktif. AST skrip lolos,13rujukan historis root tersedia. Venv arsip6.342berkas diabaikan Git. Tidak melatih ulang, mengubah model aplikasi, menghapus data, atau mengakses desktop.
+
 ### [2026-10-29 22:58] [Antigravity / Systems Diagnostician & Reliability Engineer]
 - **Goal**: Diagnosis dan perbaikan akar masalah server error pada backend BuahSafe (`buahsafe-web-capture`) dan verifikasi integrasi live server HP t530 / Vercel client.
 - **Actions**: Memeriksa status systemd `buahsafe.service` dan `cloudflared.service` di server HP t530 thin client (`192.168.1.10`); mengidentifikasi bahwa status "Alat diputus pemilik" terjadi karena toggle pemutusan alat oleh akun owner di app_settings; mengidentifikasi bahwa penanganan eksepsi umum `@app.errorhandler(Exception)` menangkap `werkzeug.exceptions.HTTPException` (misal 405 Method Not Allowed) dan mengubahnya menjadi 500 Internal Server Error di mode produksi; menambahkan `@app.errorhandler(HTTPException)` eksplisit di `app.py`; menguji reaktivasi alat ("Sambungkan alat") dari dashboard; memverifikasi seluruh 80 unit test.

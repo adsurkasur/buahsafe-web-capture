@@ -1,5 +1,13 @@
 # Decision Log (Architecture Decision Records)
 
+### [DEC-013] Arsip reversibel output dan sumber laporan versi aplikasi
+- **Date:** 2026-10-30.
+- **Status:** Implemented locally.
+- **Context:** Pengguna meminta bahan output usang diarsipkan agar sumber terbaru mudah dikenali. Runtime/simulator masih memakai CSV518, sementara laporan penelitian memakai workbook646.
+- **Decision:** Pertahankan dua input aktif di tempatnya. Arsipkan sembilan kelompok lain dengan hash dan manifest. Abaikan paket venv lokal dalam Git. Arahkan keluaran pembangkit bahan laporan versi aplikasi ke `laporan-akhir/sumber/bahan-laporan-ml`.
+- **Rationale / alternatives:** Pengarsipan memenuhi kebutuhan kerapian sekaligus mempertahankan jejak hasil serta dependensi. Penghapusan dan penimpaan model tidak diperlukan.
+- **Affected:** `output/`, `scripts/archive_output.py`, `.gitignore`, `ml/report_materials.py`, panduan deployment.
+
 ### [DEC-012] Dukungan Payload JSON Spektral 6-Kanal Langsung dari Purwarupa Fisik ESP32 AS7263
 - **Date**: 2026-10-28
 - **Status**: Accepted

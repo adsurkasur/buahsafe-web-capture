@@ -25,7 +25,7 @@ from sklearn.preprocessing import StandardScaler  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 ML_OUT = ROOT / "ml" / "output"
-DEST = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT.parent / "laporan-akhir" / "bahan-laporan-ml"
+DEST = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT.parent / "laporan-akhir" / "sumber" / "bahan-laporan-ml"
 FIG = DEST / "gambar"
 FIG.mkdir(parents=True, exist_ok=True)
 plt.rcParams.update({"figure.dpi": 100, "savefig.dpi": 300, "font.size": 10, "axes.grid": True, "grid.alpha": 0.3})

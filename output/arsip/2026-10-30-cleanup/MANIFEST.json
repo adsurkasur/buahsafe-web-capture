@@ -1,0 +1,130 @@
+{
+  "date": "2026-10-30",
+  "status": "moved-and-hash-verified",
+  "scope": "E:\\managed-projects-handoff\\BuahSafe\\buahsafe-web-capture\\output",
+  "preserved": {
+    "fixed/buahsafe_dataset_latest.xlsx": {
+      "kind": "file",
+      "files": 1,
+      "bytes": 139302,
+      "sha256": "b92fe54a589aed6d709013bd0522ca1d5595ac3efe6b1d6abcd494be061f8c4c"
+    },
+    "finalised/buahsafe_dataset_gabungan_final.csv": {
+      "kind": "file",
+      "files": 1,
+      "bytes": 117707,
+      "sha256": "9c5e6ead0e907546da079e0702972be8e4c3ed8fa7b189d57399495d2ad4ed71"
+    }
+  },
+  "moves": [
+    {
+      "source": "data_analysis",
+      "archive": "arsip/2026-10-30-cleanup/data_analysis",
+      "reason": "Analisis serta grafik historis; tidak digunakan evaluasi646.",
+      "local_only": false,
+      "before": {
+        "kind": "directory",
+        "files": 25,
+        "bytes": 1756943,
+        "tree_sha256": "15de0f64f3e698f71577a9955c612e66d81fe4f9d949eb861aabfe3fca2a7e50"
+      }
+    },
+    {
+      "source": "venv",
+      "archive": "arsip/2026-10-30-cleanup/venv",
+      "reason": "Lingkungan konversi lama; aplikasi dan evaluasi terbaru memakai .venv di root aplikasi.",
+      "local_only": true,
+      "before": {
+        "kind": "directory",
+        "files": 6342,
+        "bytes": 135492373,
+        "tree_sha256": "da03c8f9b5e82c25adf8675756541c0a4806a1c17cda0fd67d0269e3d5053c13"
+      }
+    },
+    {
+      "source": "convert_csv.bat",
+      "archive": "arsip/2026-10-30-cleanup/convert_csv.bat",
+      "reason": "Konverter CSV historis beserta lingkungan lamanya.",
+      "local_only": false,
+      "before": {
+        "kind": "file",
+        "files": 1,
+        "bytes": 1312,
+        "sha256": "157b52a3903842d38ebcf6d75f14bb252bc4504fa7a2e0b3324a98919cf9976e"
+      }
+    },
+    {
+      "source": "buahsafe_dataset_06102026.csv",
+      "archive": "arsip/2026-10-30-cleanup/buahsafe_dataset_06102026.csv",
+      "reason": "Batch mentah Oktober yang telah tercakup pada workbook terbaru.",
+      "local_only": false,
+      "before": {
+        "kind": "file",
+        "files": 1,
+        "bytes": 15654,
+        "sha256": "bc16a7ce576dc8d79d84055fa97815f17b48387bbe6b1437e983d97be6ce336c"
+      }
+    },
+    {
+      "source": "buahsafe_dataset_06102026.xlsx",
+      "archive": "arsip/2026-10-30-cleanup/buahsafe_dataset_06102026.xlsx",
+      "reason": "Salinan spreadsheet batch mentah Oktober.",
+      "local_only": false,
+      "before": {
+        "kind": "file",
+        "files": 1,
+        "bytes": 15577,
+        "sha256": "35251f9bf376191d397c6dc2a35354784b37a9582cd21be6127cd702f95bb1f0"
+      }
+    },
+    {
+      "source": "scan ade.csv",
+      "archive": "arsip/2026-10-30-cleanup/scan ade.csv",
+      "reason": "Berkas percobaan awal, bukan sumber model terbaru.",
+      "local_only": false,
+      "before": {
+        "kind": "file",
+        "files": 1,
+        "bytes": 920,
+        "sha256": "e0ae6af40192cdfaf4e5553ccb875a2e028f223b113ec1199a9e497e5d2d3232"
+      }
+    },
+    {
+      "source": "scan ade.xlsx",
+      "archive": "arsip/2026-10-30-cleanup/scan ade.xlsx",
+      "reason": "Salinan spreadsheet percobaan awal.",
+      "local_only": false,
+      "before": {
+        "kind": "file",
+        "files": 1,
+        "bytes": 5638,
+        "sha256": "97cd87a1b96b93503472e89eb1d4218b6761ad780cecea14c5d00d54336356bd"
+      }
+    },
+    {
+      "source": "fixed/clean_labels.py",
+      "archive": "arsip/2026-10-30-cleanup/fixed/clean_labels.py",
+      "reason": "Normalisasi batch lama; input yang dirujuk sudah berada dalam arsip.",
+      "local_only": false,
+      "before": {
+        "kind": "file",
+        "files": 1,
+        "bytes": 1940,
+        "sha256": "8c63666bcce60bcd12856cede8f1702594833a734bacaa5c8a2714ac14ae65b6"
+      }
+    },
+    {
+      "source": "finalised/finalise_dataset.py",
+      "archive": "arsip/2026-10-30-cleanup/finalised/finalise_dataset.py",
+      "reason": "Skrip pembentukan dataset518; bukan pembentuk workbook646 terbaru.",
+      "local_only": false,
+      "before": {
+        "kind": "file",
+        "files": 1,
+        "bytes": 2602,
+        "sha256": "45735883fc9b808117fbd8b9bed0a3713df9cdff92bb8bc12e1a3c6f570025e5"
+      }
+    }
+  ],
+  "deleted_files": 0
+}

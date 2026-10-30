@@ -1,4 +1,6 @@
 .venv/
+# Archived local conversion environment; keep it on disk without versioning installed packages.
+output/arsip/2026-10-30-cleanup/venv/
 __pycache__/
 *.pyc
 data/

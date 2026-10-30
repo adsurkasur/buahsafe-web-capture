@@ -130,7 +130,7 @@ Sertifikat: firmware mempercayai root CA Google Trust Services, Let's Encrypt (I
 ## ESP32 virtual, model, dan backup (2026-10-25)
 
 - `buahsafe-sim.service` menjalankan `esp32_simulator.py` (firmware `sim-2.0-conveyor`): detak tiap 10 detik, dan hanya mengirim buah bila supervisor/owner menekan "Jalankan simulasi conveyor (10 buah)" di web (`POST /api/device/simulate`). Spektrum = scan nyata dari 13 buah uji independen (`ml/holdout_fruits.json`), jarak antarbuah 3–6 detik, buah ke-7 dibuat gagal. ID berawalan `SIM-`. Perangkat tampil sebagai "Meja Sortasi (Simulator)" lewat `BUAHSAFE_DEVICE_LABEL`.
-- Model: `models/buahsafe_model.joblib` dibuat oleh `ml/evaluate_models.py` (SVM-RBF 18 kanal, ambang anomali 0,45, dilatih 80% buah). Bahan laporan: `ml/report_materials.py` -> `../laporan-akhir/bahan-laporan-ml/`.
+- Model: `models/buahsafe_model.joblib` dibuat oleh `ml/evaluate_models.py` (SVM-RBF 18 kanal, ambang anomali 0,45, dilatih 80% buah, catatan versi 2026-10-25). Bahan laporan versi aplikasi: `ml/report_materials.py` -> `../laporan-akhir/sumber/bahan-laporan-ml/`. Laporan seminar hasil dan evaluasi penelitian 646 pemindaian diindeks pada `../laporan-akhir/README.md` dan disimpan terpisah dari model aplikasi.
 - `buahsafe-backup.timer` (02.00) menjalankan `deploy/backup_db.py` ke `/srv/hdd1/backups/buahsafe`, simpan 14 hari, dicek `integrity_check`.
 - Berkas unit ada di `deploy/`; pasang dengan `sudo cp deploy/*.service deploy/*.timer /etc/systemd/system/ && sudo systemctl daemon-reload`.
 
