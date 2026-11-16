@@ -1,5 +1,11 @@
 # Activity Log
 
+### [2026-11-16 10:00] Claude Code — server diselaraskan dengan firmware conveyor asic-3.0
+- **Tujuan:** Program terverifikasi (photo sensor + antrian, tanpa server) disempurnakan dengan WiFi ke server t530 untuk expo; server/docs disesuaikan.
+- **Tindakan:** Audit: server t530 identik dengan repo (`fd3398f`, mode conveyor). Firmware baru dibuat di `BuahSafe/asic_final_alat/buahsafe_conveyor_server/` (superproject). Teks log server PIR -> pemicu netral; docs diberi catatan wiring canon baru.
+- **Berkas:** `app.py`, `docs/DEPLOY_SERVER_WIFI.md`, `docs/PANDUAN_RANGKAIAN_ALAT.md`, ketiga log.
+- **Verifikasi:** POST payload persis format firmware ke server live -> HTTP 200 `{"ok":true,"seq":..,"result":"ANOMALI","prob":..}` (fw `sim-...`, ID SIM-20261116-0001, tidak bercampur data CV). Tidak diuji dengan hardware fisik.
+
 ### [2026-10-30 11:30] Codex — pengarsipan output penelitian
 - **Tujuan:** Merapikan output sesuai arahan pengguna tanpa menghapus sumber aktif.
 - **Tindakan:** Memindahkan9akar/6.374berkas ke `output/arsip/2026-10-30-cleanup`, menyimpan manifest/hash, memperbarui indeks dan tujuan default bahan laporan lama ke `laporan-akhir/sumber/bahan-laporan-ml`.

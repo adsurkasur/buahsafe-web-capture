@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-11-16] — Firmware conveyor asic-3.0 tersambung server
+
+### Changed
+- Log `/api/device/auto-scan` memakai istilah "pemicu" (photo sensor menggantikan PIR).
+- Docs deploy dan rangkaian mencatat wiring canon alat expo.
+
 ## [2026-10-30] — Output archived locally
 
 ### Added

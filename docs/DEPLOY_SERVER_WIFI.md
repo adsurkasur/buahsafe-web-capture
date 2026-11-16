@@ -1,5 +1,13 @@
 # Server produksi + ESP32 conveyor (WiFi)
 
+
+> **Pembaruan 2026-11-16: firmware alat expo `asic-3.0-conveyor`** (`BuahSafe/asic_final_alat/buahsafe_conveyor_server/`). Konfigurasi hardware ini menjadi acuan (canon):
+> photo sensor BRQP400-DDTA di GPIO 27 (NPN, LOW = ada buah), relay halogen GPIO 26 (aktif HIGH), relay conveyor GPIO 4 (aktif LOW), buzzer 25, LCD SDA 13/SCL 14, AS7265x SDA 21/SCL 22.
+> Buah masuk antrian (maks 6); belt berhenti 3,5 dtk waktu-belt setelah buah kena photo sensor, halogen warmup 1,5 dtk, ukur 6 kanal (rata-rata 5x),
+> lalu ESP32 mengirim JSON `{"nm610".."nm860","fw"}` ke `/api/device/auto-scan` **selama belt berhenti**. LCD: `#seq NORMAL/ANOMALI` + `Prob: xx%` (probabilitas anomali), buzzer 1x normal / 3x anomali / 2x panjang = server error.
+> WiFi dan device key ada di `secrets.h` (tidak di-commit, salin dari `secrets.example.h`). Tidak ada detak saat belt jalan, jadi status online di web diperbarui per buah.
+> Bagian di bawah yang menyebut PIR, `buahsafe_wifi/`, dan `config.h` berlaku untuk firmware lama.
+
 Status per 2026-10-23: server berjalan di HP t530 Thin Client (`adsur@192.168.1.10`) dan bisa diakses publik di `https://buahsafe-api.adsurkasur.my.id` (URL sementara). Alur scan sudah diuji lewat internet memakai ESP32 tiruan (spektrum asli dari dataset final). Belum diuji dengan ESP32 fisik.
 
 ## Arsitektur

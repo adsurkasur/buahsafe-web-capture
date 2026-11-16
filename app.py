@@ -427,7 +427,7 @@ def api_device_poll():
 
 @app.post("/api/device/auto-scan")
 def api_device_auto_scan():
-    """Mode conveyor: ESP32 dipicu PIR, mengukur, lalu mengirim baris DATA ke sini.
+    """Mode conveyor: ESP32 dipicu photo sensor (sebelumnya PIR), mengukur, lalu mengirim baris DATA ke sini.
 
     ID buah dibuat server: CV-YYYYMMDD-NNNN (SIM-... untuk simulator). Nomor urut
     NNNN itulah yang tampil di LCD dan di antrean web operator di ujung belt.
@@ -484,7 +484,7 @@ def api_device_auto_scan():
         )
     debug_logger.add("INFO", "CONVEYOR",
                      f"{fruit_id} {prediction['result']} {prediction['confidence']}% "
-                     f"(PIR aktif {payload.get('trigger_ms')} ms, ukur {payload.get('measure_ms')} ms, "
+                     f"(pemicu {payload.get('trigger_ms')} ms, ukur {payload.get('measure_ms')} ms, "
                      f"jeda lampu {payload.get('settle_ms')} ms, sampel {payload.get('samples')}, "
                      f"mode lampu {payload.get('lamp_mode')}, fw {fw})")
     prob_anomali = round(prediction["probabilities"]["anomali"] / 100.0, 4) if "probabilities" in prediction else round(prediction.get("confidence", 0) / 100.0, 4)

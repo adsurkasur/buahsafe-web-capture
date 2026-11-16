@@ -1,5 +1,13 @@
 # Decision Log (Architecture Decision Records)
 
+### [DEC-014] Firmware expo asic-3.0: POST ke server hanya saat belt berhenti
+- **Date:** 2026-11-16.
+- **Status:** Implemented; belum diuji di hardware.
+- **Context:** Program terverifikasi (photo sensor, antrian buah, pin relay ditukar) tidak punya koneksi server. Pengguna menetapkan hardware baru sebagai canon dan meminta LCD sama seperti versi server.
+- **Decision:** Logika antrian tidak diubah; HTTP POST 6 kanal dilakukan di state SCAN saat belt berhenti sehingga jam belt (`runMs`) membeku. Tanpa detak saat belt jalan. Kredensial di `secrets.h` yang di-gitignore.
+- **Rationale / alternatives:** Jembatan serial ditolak (alat harus mandiri). Detak saat belt jalan memblok `loop()` dan bisa melewatkan buah.
+- **Affected:** `asic_final_alat/buahsafe_conveyor_server/`, `/api/device/auto-scan` (tanpa perubahan logika).
+
 ### [DEC-013] Arsip reversibel output dan sumber laporan versi aplikasi
 - **Date:** 2026-10-30.
 - **Status:** Implemented locally.

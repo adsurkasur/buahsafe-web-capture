@@ -1,5 +1,8 @@
 # Panduan rangkaian alat BuahSafe (conveyor)
 
+> **Catatan 2026-11-16:** wiring alat expo (photo sensor BRQP400 menggantikan PIR, relay halogen GPIO 26, relay conveyor GPIO 4) tercantum di bagian pembaruan [DEPLOY_SERVER_WIFI.md](DEPLOY_SERVER_WIFI.md). Panduan di bawah untuk rangkaian PIR lama.
+
+
 Panduan merakit elektronik alat sortasi BuahSafe: ESP32, sensor AS7265x, PIR HC-SR501, relay lampu halogen, LCD 16x2 I2C, dan buzzer. Pin di sini sama dengan Tabel Koneksi di draf laporan dan dengan nilai bawaan firmware `buahsafe_wifi/` (2.2.0-conveyor). Bila pin diubah saat merakit, ubah juga di `config.h` (lihat `config.example.h`).
 
 Cara flash firmware dan menyambungkan alat ke server ada di [DEPLOY_SERVER_WIFI.md](DEPLOY_SERVER_WIFI.md).
